@@ -1,0 +1,8 @@
+## Interface: 120000
+## Title: EasyPrescience
+## Notes: Pick Prescience targets from unit frame menus and auto-update/create your macro
+## Author: Dydko-Draenor (Discord: Nkvri#2705)
+## Version: 1.1.0
+## SavedVariables: EasyPrescienceDB
+
+EasyPrescience.lua
