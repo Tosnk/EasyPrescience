@@ -54,7 +54,7 @@ local function BuildMacroBody()
 
 	return table.concat({
 		"#showtooltip Prescience",
-		"/cast [mod:" .. mod:lower() .. "," .. first .. ",help,nodead][" .. second .. ",help,nodead] Prescience",
+		"/cast [mod:" .. mod:lower() .. "," .. first .. ",help,nodead][" .. second .. ",help,nodead][] Prescience",
 	}, "\n")
 end
 
