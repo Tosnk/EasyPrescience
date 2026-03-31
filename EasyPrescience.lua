@@ -171,6 +171,7 @@ local function BuildPrescienceMacroBody()
 		end
 	end
 
+	conditions[#conditions + 1] = "[@mouseover,help,nodead]"
 	conditions[#conditions + 1] = "[]"
 
 	return table.concat({
@@ -181,22 +182,32 @@ end
 
 local function BuildDirectTargetMacroBody(spellName, targetName)
 	local normalizedTarget = NormalizeName(targetName)
-	local condition = normalizedTarget and ("[@" .. normalizedTarget .. ",help,nodead]") or "[]"
+	local conditions = {}
+	if normalizedTarget then
+		conditions[#conditions + 1] = "[@" .. normalizedTarget .. ",help,nodead]"
+	end
+	conditions[#conditions + 1] = "[@mouseover,help,nodead]"
+	conditions[#conditions + 1] = "[]"
 
 	return table.concat({
 		"#showtooltip " .. spellName,
-		"/cast " .. condition .. " " .. spellName,
+		"/cast " .. table.concat(conditions, "") .. " " .. spellName,
 	}, "\n")
 end
 
 local function BuildSingleModifierTargetMacroBody(spellName, modifierKey, targetName)
 	local normalizedTarget = NormalizeName(targetName)
 	local normalizedModifier = IsModifierKey(modifierKey) and modifierKey:lower() or "alt"
-	local condition = normalizedTarget and ("[mod:" .. normalizedModifier .. ",@" .. normalizedTarget .. ",help,nodead]") or ""
+	local conditions = {}
+	if normalizedTarget then
+		conditions[#conditions + 1] = "[mod:" .. normalizedModifier .. ",@" .. normalizedTarget .. ",help,nodead]"
+	end
+	conditions[#conditions + 1] = "[@mouseover,help,nodead]"
+	conditions[#conditions + 1] = "[]"
 
 	return table.concat({
 		"#showtooltip " .. spellName,
-		"/cast " .. condition .. "[] " .. spellName,
+		"/cast " .. table.concat(conditions, "") .. " " .. spellName,
 	}, "\n")
 end
 

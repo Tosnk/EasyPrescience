@@ -20,6 +20,7 @@ Even though Prescience is Augmentation-specific, the addon still stays useful fo
 - Holding **Shift / Alt / Ctrl** casts **Prescience** on the player assigned to that modifier
 - Each non-Prescience support spell uses its own configurable modifier key from the Blizzard Settings panel
 - **Blistering Scales**, **Rescue**, **Spatial Paradox / Time Spiral**, and **Verdant Embrace** all cast normally by default and target the assigned player when their configured modifier is held
+- Default casting still preserves normal **mouseover / frame targeting** behavior
 - Automatically creates macros if they do not already exist
 - Automatically reviews and repairs missing, outdated, or manually modified macros
 - Includes a full **Blizzard Settings -> AddOns** configuration panel for macro names and stored targets
