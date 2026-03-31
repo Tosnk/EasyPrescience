@@ -1,8 +1,8 @@
 ## Interface: 120000
 ## Title: EasyPrescience
-## Notes: Assign Prescience to Shift/Alt/Ctrl from unit menus and auto-update/create your macro
+## Notes: Manage Prescience and support macros from unit menus with automatic review and Blizzard Settings options
 ## Author: Dydko-Draenor (Discord: Nkvri#2705)
-## Version: 1.4.0
+## Version: 1.6.0
 ## SavedVariables: EasyPrescienceDB
 
 EasyPrescience.lua
