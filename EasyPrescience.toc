@@ -1,8 +1,8 @@
 ## Interface: 120000
 ## Title: EasyPrescience
-## Notes: Pick Prescience targets from unit frame menus and auto-update/create your macro
+## Notes: Assign Prescience to Shift/Alt/Ctrl from unit menus and auto-update/create your macro
 ## Author: Dydko-Draenor (Discord: Nkvri#2705)
-## Version: 1.1.1
+## Version: 1.2.0
 ## SavedVariables: EasyPrescienceDB
 
 EasyPrescience.lua

@@ -1,63 +1,79 @@
 # EasyPrescience
 
-EasyPrescience is a lightweight World of Warcraft addon that lets you **pick Prescience targets instantly** from the **right-click unit context menu** on player frames (party/raid/target/nameplates/etc.) and **automatically creates/updates your macro**.
+EasyPrescience is a lightweight World of Warcraft addon that lets you **store Prescience targets directly on SHIFT / ALT / CTRL** from the **right-click unit context menu** and **automatically creates or updates your macro**.
+
+## What changed
+
+This version switches the addon to a cleaner and more reliable workflow:
+
+- No modifier → **casts Prescience normally**
+- **Shift** → casts on the player stored for Shift
+- **Alt** → casts on the player stored for Alt
+- **Ctrl** → casts on the player stored for Ctrl
+
+It also includes a menu/update reliability pass so target reassignments keep working more consistently after roster or group changes.
 
 ## Features
 
-- ✅ Right-click any player unit frame → set **Prescience Main** / **Prescience Alt**
+- ✅ Right-click any supported player frame and assign a target to:
+  - **Set on Shift**
+  - **Set on Alt**
+  - **Set on Ctrl**
+- ✅ No modifier still behaves like a normal **Prescience** cast
 - ✅ Works in **Raid / Party / Arena / Battlegrounds**
 - ✅ Automatically **creates the macro** if it doesn't exist
-- ✅ **Modifier remap**: ALT / CTRL / SHIFT
-- ✅ Optional **invert** mode (modifier casts Main)
-- ✅ No spec checks, no extra UI, minimal footprint
+- ✅ Automatically **updates the macro** when targets change
+- ✅ Minimal setup, no extra UI
 
 ## How it works
 
-EasyPrescience adds two entries to unit context menus for player units:
+EasyPrescience adds three entries to supported unit context menus for player units:
 
-- **Set Prescience (Main)**
-- **Set Prescience (Alt)**
+- **Set on Shift**
+- **Set on Alt**
+- **Set on Ctrl**
 
-When clicked, the addon stores the selected character names and updates your macro accordingly.
+When clicked, the addon stores that player's name for the selected modifier and refreshes the macro.
 
 ## Macro behavior
 
-Default behavior:
-- No modifier → casts **Main**
-- Modifier (default **ALT**) → casts **Alt**
+Macro behavior is now:
 
-Optional invert mode:
-- Modifier → casts **Main**
-- No modifier → casts **Alt**
+- No modifier → normal **Prescience** cast
+- **Shift** held → cast on stored **Shift** target
+- **Alt** held → cast on stored **Alt** target
+- **Ctrl** held → cast on stored **Ctrl** target
+- If a modifier target is not configured, the macro falls back to the normal cast
 
 ## Macro creation
 
-By default, EasyPrescience creates/updates a macro named:
+By default, EasyPrescience creates or updates a macro named:
 
 `PrescienceName`
 
-If the macro does not exist, the addon will create it automatically (out of combat).
+If the macro does not exist, the addon will create it automatically when allowed by the game client.
 
 ## Commands
 
 Type `/ep` to print current settings.
 
 - `/ep macro <MacroName>`  
-  Set which macro to create/update (default: `PrescienceName`).
+  Set which macro to create or update.
 
-- `/ep mod <alt|ctrl|shift>`  
-  Change which modifier triggers the alternate target.
+- `/ep set <shift|alt|ctrl> <player[-realm]>`  
+  Assign a player to a modifier slot manually.
 
-- `/ep invert <on|off>`  
-  If **on**, the modifier casts **Main** and default casts **Alt**.
+- `/ep clear <shift|alt|ctrl>`  
+  Clear one modifier slot.
 
 - `/ep update`  
-  Force a macro refresh (out of combat only).
+  Force a macro refresh.
 
 ## Notes / Limitations
 
-- Blizzard blocks macro creation/editing in combat.
-- Most unit frames are supported through the modern Menu API. Some heavily customized unit-frame addons may use custom context menus.
+- Blizzard blocks macro creation and editing in combat.
+- Most default unit-frame context menus are supported through the modern Menu API.
+- Some heavily customized unit-frame addons may use custom menus and may not expose these entries.
 
 ## Author
 
@@ -71,4 +87,4 @@ It is ready for rapid changes, feature extensions, and maintenance in an automat
 
 ## License
 
-MIT License (see `LICENSE` file).
+MIT License (see `LICENSE.txt`).

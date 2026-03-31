@@ -2,6 +2,33 @@ EasyPrescienceDB = EasyPrescienceDB or {}
 
 local ADDON = "EasyPrescience"
 local DEFAULT_MACRO_NAME = "PrescienceName"
+local MODIFIER_KEYS = { "SHIFT", "ALT", "CTRL" }
+local DISPLAY_KEYS = {
+	SHIFT = "Shift",
+	ALT = "Alt",
+	CTRL = "Ctrl",
+}
+local HOOK_MENU_KEYS = {
+	"MENU_UNIT_SELF",
+	"MENU_UNIT_PLAYER",
+	"MENU_UNIT_TARGET",
+	"MENU_UNIT_TARGET_PLAYER",
+	"MENU_UNIT_FOCUS",
+	"MENU_UNIT_NAMEPLATE",
+	"MENU_UNIT_PARTY",
+	"MENU_UNIT_PARTY_MEMBER",
+	"MENU_UNIT_RAID",
+	"MENU_UNIT_RAID_MEMBER",
+	"MENU_UNIT_RAID_PLAYER",
+	"MENU_UNIT_FRIEND",
+	"MENU_UNIT_ENEMY_PLAYER",
+	"MENU_UNIT_PET",
+	"MENU_UNIT_ARENAENEMY",
+	"MENU_UNIT_BN_FRIEND",
+	"MENU_UNIT_GUILD",
+}
+
+local hookedMenus = {}
 
 local function Msg(...)
 	print("|cff55ff55" .. ADDON .. ":|r", ...)
@@ -13,7 +40,13 @@ end
 
 local function NormalizeName(full)
 	if not full or full == "" then return nil end
-	return (full:gsub("%s+", ""))
+	full = full:gsub("%s+", "")
+	if full == "" then return nil end
+	return full
+end
+
+local function IsModifierKey(value)
+	return value == "SHIFT" or value == "ALT" or value == "CTRL"
 end
 
 local function FullUnitName(unit)
@@ -21,10 +54,42 @@ local function FullUnitName(unit)
 	return NormalizeName(GetUnitName(unit, true))
 end
 
+local function EnsureTargetsTable()
+	if type(EasyPrescienceDB.targets) ~= "table" then
+		EasyPrescienceDB.targets = {}
+	end
+
+	for _, key in ipairs(MODIFIER_KEYS) do
+		local value = EasyPrescienceDB.targets[key]
+		EasyPrescienceDB.targets[key] = NormalizeName(value)
+	end
+end
+
+local function MigrateLegacyData()
+	if EasyPrescienceDB.schemaVersion == 2 then return end
+
+	EnsureTargetsTable()
+
+	local legacyKey = type(EasyPrescienceDB.modKey) == "string" and EasyPrescienceDB.modKey:upper() or "ALT"
+	if IsModifierKey(legacyKey) and not EasyPrescienceDB.targets[legacyKey] then
+		local legacyTarget = EasyPrescienceDB.invert and EasyPrescienceDB.main or EasyPrescienceDB.alt
+		legacyTarget = NormalizeName(legacyTarget)
+		if legacyTarget then
+			EasyPrescienceDB.targets[legacyKey] = legacyTarget
+		end
+	end
+
+	EasyPrescienceDB.main = nil
+	EasyPrescienceDB.alt = nil
+	EasyPrescienceDB.modKey = nil
+	EasyPrescienceDB.invert = nil
+	EasyPrescienceDB.schemaVersion = 2
+end
+
 local function EnsureDB()
 	EasyPrescienceDB.macroName = EasyPrescienceDB.macroName or DEFAULT_MACRO_NAME
-	EasyPrescienceDB.modKey = (EasyPrescienceDB.modKey or "ALT"):upper()
-	EasyPrescienceDB.invert = EasyPrescienceDB.invert or false
+	EnsureTargetsTable()
+	MigrateLegacyData()
 end
 
 local function MacroIndexByName(name)
@@ -34,27 +99,20 @@ local function MacroIndexByName(name)
 end
 
 local function BuildMacroBody()
-	local main = EasyPrescienceDB.main
-	local alt = EasyPrescienceDB.alt
-	local mod = (EasyPrescienceDB.modKey or "ALT"):upper()
-	local invert = EasyPrescienceDB.invert and true or false
+	local conditions = {}
 
-	if not main or main == "" then main = "NAME_MAIN" end
-	if not alt or alt == "" then alt = "NAME_ALT" end
-
-	local mainAt = "@" .. main
-	local altAt  = "@" .. alt
-
-	local first, second
-	if invert then
-		first, second = mainAt, altAt
-	else
-		first, second = altAt, mainAt
+	for _, key in ipairs(MODIFIER_KEYS) do
+		local targetName = NormalizeName(EasyPrescienceDB.targets[key])
+		if targetName then
+			conditions[#conditions + 1] = "[mod:" .. key:lower() .. ",@" .. targetName .. ",help,nodead]"
+		end
 	end
+
+	conditions[#conditions + 1] = "[]"
 
 	return table.concat({
 		"#showtooltip Prescience",
-		"/cast [mod:" .. mod:lower() .. "," .. first .. ",help,nodead][" .. second .. ",help,nodead][] Prescience",
+		"/cast " .. table.concat(conditions, "") .. " Prescience",
 	}, "\n")
 end
 
@@ -82,9 +140,7 @@ local function EnsureMacroExists()
 		return nil
 	end
 
-	local perChar = (canPerChar and 1) or 0
-	if not canPerChar and canGlobal then perChar = 0 end
-
+	local perChar = canPerChar and 1 or 0
 	local icon = 134400
 	local body = BuildMacroBody()
 
@@ -117,17 +173,37 @@ local function UpdateMacro()
 	end
 end
 
-local function SetTargetFromUnit(unit, which)
-	local n = FullUnitName(unit)
-	if not n then return end
-	EasyPrescienceDB[which] = n
+local function SetModifierTarget(modifierKey, fullName)
+	modifierKey = type(modifierKey) == "string" and modifierKey:upper() or nil
+	if not IsModifierKey(modifierKey) then return end
+
+	fullName = NormalizeName(fullName)
+	if not fullName then return end
+
+	EnsureDB()
+	EasyPrescienceDB.targets[modifierKey] = fullName
 	UpdateMacro()
-	Msg(which:upper(), "=", n)
+	Msg(DISPLAY_KEYS[modifierKey] .. " =", fullName)
+end
+
+local function ClearModifierTarget(modifierKey)
+	modifierKey = type(modifierKey) == "string" and modifierKey:upper() or nil
+	if not IsModifierKey(modifierKey) then return end
+
+	EnsureDB()
+	EasyPrescienceDB.targets[modifierKey] = nil
+	UpdateMacro()
+	Msg(DISPLAY_KEYS[modifierKey] .. " cleared")
 end
 
 local function GetContextUnit(contextData)
 	if type(contextData) ~= "table" then return nil end
 	return contextData.unit or contextData.unitToken or contextData.unitID
+end
+
+local function GetContextName(contextData)
+	if type(contextData) ~= "table" then return nil end
+	return NormalizeName(contextData.fullName or contextData.name or contextData.unitName)
 end
 
 local function ResolveUnit(ownerRegion, contextData)
@@ -140,9 +216,9 @@ local function ResolveUnit(ownerRegion, contextData)
 	end
 
 	if ownerRegion and ownerRegion.GetParent then
-		local p = ownerRegion:GetParent()
-		if p and p.GetAttribute then
-			unit = p:GetAttribute("unit")
+		local parent = ownerRegion:GetParent()
+		if parent and parent.GetAttribute then
+			unit = parent:GetAttribute("unit")
 			if unit and UnitExists(unit) then return unit end
 		end
 	end
@@ -150,14 +226,35 @@ local function ResolveUnit(ownerRegion, contextData)
 	return nil
 end
 
-local function InjectMenu(ownerRegion, rootDescription, contextData)
+local function ResolveTargetName(ownerRegion, contextData)
 	local unit = ResolveUnit(ownerRegion, contextData)
-	if not unit or not UnitExists(unit) or not UnitIsPlayer(unit) then return end
+	local fullName = FullUnitName(unit)
+	if fullName then return fullName end
+	return GetContextName(contextData)
+end
+
+local function InjectMenu(ownerRegion, rootDescription, contextData)
+	local targetName = ResolveTargetName(ownerRegion, contextData)
+	if not targetName then return end
 
 	rootDescription:CreateDivider()
 	rootDescription:CreateTitle("EasyPrescience")
-	rootDescription:CreateButton("Set Prescience (Main)", function() SetTargetFromUnit(unit, "main") end)
-	rootDescription:CreateButton("Set Prescience (Alt)", function() SetTargetFromUnit(unit, "alt") end)
+
+	for _, key in ipairs(MODIFIER_KEYS) do
+		local modifierKey = key
+		rootDescription:CreateButton("Set on " .. DISPLAY_KEYS[modifierKey], function()
+			SetModifierTarget(modifierKey, targetName)
+		end)
+	end
+end
+
+local function TryHookMenu(key)
+	if hookedMenus[key] then return end
+	if not Menu or not Menu.ModifyMenu then return end
+	local ok = pcall(Menu.ModifyMenu, key, InjectMenu)
+	if ok then
+		hookedMenus[key] = true
+	end
 end
 
 local function HookMenus()
@@ -166,62 +263,42 @@ local function HookMenus()
 		return
 	end
 
-	local done = {}
-
-	local function try(key)
-		if done[key] then return end
-		done[key] = true
-		pcall(Menu.ModifyMenu, key, InjectMenu)
-	end
-
-	local keys = {
-		"MENU_UNIT_SELF",
-		"MENU_UNIT_PLAYER",
-		"MENU_UNIT_TARGET",
-		"MENU_UNIT_TARGET_PLAYER",
-		"MENU_UNIT_FOCUS",
-		"MENU_UNIT_NAMEPLATE",
-		"MENU_UNIT_PARTY",
-		"MENU_UNIT_PARTY_MEMBER",
-		"MENU_UNIT_RAID",
-		"MENU_UNIT_RAID_MEMBER",
-		"MENU_UNIT_RAID_PLAYER",
-		"MENU_UNIT_FRIEND",
-		"MENU_UNIT_ENEMY_PLAYER",
-		"MENU_UNIT_PET",
-		"MENU_UNIT_ARENAENEMY",
-		"MENU_UNIT_BN_FRIEND",
-		"MENU_UNIT_GUILD",
-	}
-
-	for _, k in ipairs(keys) do
-		try(k)
+	for _, key in ipairs(HOOK_MENU_KEYS) do
+		TryHookMenu(key)
 	end
 
 	if type(UnitPopupMenus) == "table" then
-		for k in pairs(UnitPopupMenus) do
-			if type(k) == "string" and k:match("^MENU_UNIT_") then
-				try(k)
+		for key in pairs(UnitPopupMenus) do
+			if type(key) == "string" and key:match("^MENU_UNIT_") then
+				TryHookMenu(key)
 			end
 		end
 	end
+
 	if type(UnitPopupButtons) == "table" then
-		for k in pairs(UnitPopupButtons) do
-			if type(k) == "string" and k:match("^MENU_UNIT_") then
-				try(k)
+		for key in pairs(UnitPopupButtons) do
+			if type(key) == "string" and key:match("^MENU_UNIT_") then
+				TryHookMenu(key)
 			end
 		end
 	end
 end
 
-local f = CreateFrame("Frame")
-f:RegisterEvent("PLAYER_LOGIN")
-f:RegisterEvent("PLAYER_ENTERING_WORLD")
-f:SetScript("OnEvent", function(_, event)
+local frame = CreateFrame("Frame")
+frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+frame:SetScript("OnEvent", function(_, event)
 	EnsureDB()
+
 	if event == "PLAYER_LOGIN" then
 		HookMenus()
-		EnsureMacroExists()
+		UpdateMacro()
+		return
+	end
+
+	if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
+		HookMenus()
 	end
 end)
 
@@ -229,59 +306,61 @@ SLASH_EASYPRESCIENCE1 = "/ep"
 SlashCmdList.EASYPRESCIENCE = function(msg)
 	EnsureDB()
 	msg = (msg or ""):gsub("^%s+", ""):gsub("%s+$", "")
-	local a, b = msg:match("^(%S+)%s*(.*)$")
-	a = a and a:lower() or ""
+	local command, rest = msg:match("^(%S+)%s*(.*)$")
+	command = command and command:lower() or ""
 
-	if a == "" then
-		Msg("macro =", EasyPrescienceDB.macroName, "| mod =", EasyPrescienceDB.modKey, "| invert =", EasyPrescienceDB.invert and "on" or "off")
-		Msg("main  =", EasyPrescienceDB.main or "")
-		Msg("alt   =", EasyPrescienceDB.alt or "")
+	if command == "" then
+		Msg("macro =", EasyPrescienceDB.macroName)
+		for _, key in ipairs(MODIFIER_KEYS) do
+			Msg(DISPLAY_KEYS[key] .. " =", EasyPrescienceDB.targets[key] or "")
+		end
 		Msg("Commands:")
 		Msg("/ep macro <name>")
-		Msg("/ep mod <alt|ctrl|shift>")
-		Msg("/ep invert <on|off>")
+		Msg("/ep set <shift|alt|ctrl> <player[-realm]>")
+		Msg("/ep clear <shift|alt|ctrl>")
 		Msg("/ep update")
 		return
 	end
 
-	if a == "macro" and b ~= "" then
-		EasyPrescienceDB.macroName = b
-		EnsureMacroExists()
+	if command == "macro" and rest ~= "" then
+		EasyPrescienceDB.macroName = rest
 		UpdateMacro()
-		Msg("macro =", b)
+		Msg("macro =", rest)
 		return
 	end
 
-	if a == "mod" and b ~= "" then
-		local v = b:upper()
-		if v == "ALT" or v == "CTRL" or v == "SHIFT" then
-			EasyPrescienceDB.modKey = v
-			UpdateMacro()
-			Msg("mod =", v)
-		else
-			Err("Invalid mod. Use: alt, ctrl, or shift.")
+	if command == "set" and rest ~= "" then
+		local key, name = rest:match("^(%S+)%s+(.+)$")
+		key = key and key:upper() or nil
+		if not IsModifierKey(key) then
+			Err("Invalid modifier. Use: shift, alt, or ctrl.")
+			return
 		end
-		return
-	end
-
-	if a == "invert" and b ~= "" then
-		local v = b:lower()
-		if v == "on" or v == "1" or v == "true" then
-			EasyPrescienceDB.invert = true
-			UpdateMacro()
-			Msg("invert = on (modifier casts MAIN)")
-		elseif v == "off" or v == "0" or v == "false" then
-			EasyPrescienceDB.invert = false
-			UpdateMacro()
-			Msg("invert = off (modifier casts ALT)")
-		else
-			Err("Use: /ep invert on|off")
+		if not NormalizeName(name) then
+			Err("Missing player name.")
+			return
 		end
+		SetModifierTarget(key, name)
 		return
 	end
 
-	if a == "update" then
+	if command == "clear" and rest ~= "" then
+		local key = rest:upper()
+		if not IsModifierKey(key) then
+			Err("Invalid modifier. Use: shift, alt, or ctrl.")
+			return
+		end
+		ClearModifierTarget(key)
+		return
+	end
+
+	if command == "update" then
 		UpdateMacro()
+		return
+	end
+
+	if command == "mod" or command == "invert" then
+		Err("Legacy command removed. Use /ep set <shift|alt|ctrl> <player[-realm]> instead.")
 		return
 	end
 
