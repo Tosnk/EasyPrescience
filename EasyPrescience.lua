@@ -257,7 +257,21 @@ local function BuildSpatialParadoxMacroBody()
 end
 
 local function BuildVerdantEmbraceMacroBody()
-	return BuildSingleModifierTargetMacroBody(VERDANT_EMBRACE_SPELL_NAME, EasyPrescienceDB.verdantEmbraceModifier, EasyPrescienceDB.verdantEmbraceTarget)
+	local normalizedTarget = NormalizeName(EasyPrescienceDB.verdantEmbraceTarget)
+	local normalizedModifier = IsModifierKey(EasyPrescienceDB.verdantEmbraceModifier) and EasyPrescienceDB.verdantEmbraceModifier:lower() or "alt"
+	local conditions = {}
+	if normalizedTarget then
+		conditions[#conditions + 1] = "[mod:" .. normalizedModifier .. ",@" .. normalizedTarget .. ",help,nodead]"
+	end
+	conditions[#conditions + 1] = "[mod:" .. normalizedModifier .. "]"
+	conditions[#conditions + 1] = "[nomod,@mouseover,help,nodead]"
+	conditions[#conditions + 1] = "[nomod,help,nodead]"
+	conditions[#conditions + 1] = "[nomod,@player]"
+
+	return table.concat({
+		"#showtooltip " .. VERDANT_EMBRACE_SPELL_NAME,
+		"/cast " .. table.concat(conditions, "") .. " " .. VERDANT_EMBRACE_SPELL_NAME,
+	}, "\n")
 end
 
 local function GetManagedMacros()

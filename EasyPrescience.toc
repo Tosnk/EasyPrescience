@@ -2,7 +2,7 @@
 ## Title: EasyPrescience
 ## Notes: Manage Prescience and support macros from unit menus with automatic review and Blizzard Settings options
 ## Author: Dydko-Draenor (Discord: Nkvri#2705)
-## Version: 1.6.2
+## Version: 1.6.3
 ## SavedVariables: EasyPrescienceDB
 
 EasyPrescience.lua
