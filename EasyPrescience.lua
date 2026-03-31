@@ -3,6 +3,8 @@ EasyPrescienceDB = EasyPrescienceDB or {}
 local ADDON = "EasyPrescience"
 local DEFAULT_MACRO_NAME = "PrescienceName"
 local DEFAULT_BLISTERING_SCALES_MACRO_NAME = "BlisteringScales"
+local DEFAULT_RESCUE_MACRO_NAME = "RescueTarget"
+local DEFAULT_SPATIAL_PARADOX_MACRO_NAME = "SpatialParadox"
 local MODIFIER_KEYS = { "SHIFT", "ALT", "CTRL" }
 local DISPLAY_KEYS = {
 	SHIFT = "Shift",
@@ -67,7 +69,7 @@ local function EnsureTargetsTable()
 end
 
 local function MigrateLegacyData()
-	if EasyPrescienceDB.schemaVersion == 3 then return end
+	if EasyPrescienceDB.schemaVersion == 4 then return end
 
 	EnsureTargetsTable()
 
@@ -85,15 +87,21 @@ local function MigrateLegacyData()
 	EasyPrescienceDB.modKey = nil
 	EasyPrescienceDB.invert = nil
 	EasyPrescienceDB.blisteringScalesTarget = NormalizeName(EasyPrescienceDB.blisteringScalesTarget)
-	EasyPrescienceDB.schemaVersion = 3
+	EasyPrescienceDB.rescueTarget = NormalizeName(EasyPrescienceDB.rescueTarget)
+	EasyPrescienceDB.spatialParadoxTarget = NormalizeName(EasyPrescienceDB.spatialParadoxTarget)
+	EasyPrescienceDB.schemaVersion = 4
 end
 
 local function EnsureDB()
 	EasyPrescienceDB.macroName = EasyPrescienceDB.macroName or DEFAULT_MACRO_NAME
 	EasyPrescienceDB.blisteringScalesMacroName = EasyPrescienceDB.blisteringScalesMacroName or DEFAULT_BLISTERING_SCALES_MACRO_NAME
+	EasyPrescienceDB.rescueMacroName = EasyPrescienceDB.rescueMacroName or DEFAULT_RESCUE_MACRO_NAME
+	EasyPrescienceDB.spatialParadoxMacroName = EasyPrescienceDB.spatialParadoxMacroName or DEFAULT_SPATIAL_PARADOX_MACRO_NAME
 	EnsureTargetsTable()
 	MigrateLegacyData()
 	EasyPrescienceDB.blisteringScalesTarget = NormalizeName(EasyPrescienceDB.blisteringScalesTarget)
+	EasyPrescienceDB.rescueTarget = NormalizeName(EasyPrescienceDB.rescueTarget)
+	EasyPrescienceDB.spatialParadoxTarget = NormalizeName(EasyPrescienceDB.spatialParadoxTarget)
 end
 
 local function MacroIndexByName(name)
@@ -128,6 +136,24 @@ local function BuildBlisteringScalesMacroBody()
 		"#showtooltip Blistering Scales",
 		"/cast " .. condition .. " Blistering Scales",
 	}, "\n")
+end
+
+local function BuildAltTargetMacroBody(spellName, targetName)
+	local normalizedTarget = NormalizeName(targetName)
+	local condition = normalizedTarget and ("[mod:alt,@" .. normalizedTarget .. ",help,nodead]") or ""
+
+	return table.concat({
+		"#showtooltip " .. spellName,
+		"/cast " .. condition .. "[] " .. spellName,
+	}, "\n")
+end
+
+local function BuildRescueMacroBody()
+	return BuildAltTargetMacroBody("Rescue", EasyPrescienceDB.rescueTarget)
+end
+
+local function BuildSpatialParadoxMacroBody()
+	return BuildAltTargetMacroBody("Spatial Paradox", EasyPrescienceDB.spatialParadoxTarget)
 end
 
 local function EnsureMacroExists(name, body)
@@ -190,6 +216,14 @@ local function UpdateBlisteringScalesMacro()
 	UpdateMacroByName(EasyPrescienceDB.blisteringScalesMacroName, BuildBlisteringScalesMacroBody())
 end
 
+local function UpdateRescueMacro()
+	UpdateMacroByName(EasyPrescienceDB.rescueMacroName, BuildRescueMacroBody())
+end
+
+local function UpdateSpatialParadoxMacro()
+	UpdateMacroByName(EasyPrescienceDB.spatialParadoxMacroName, BuildSpatialParadoxMacroBody())
+end
+
 local function SetModifierTarget(modifierKey, fullName)
 	modifierKey = type(modifierKey) == "string" and modifierKey:upper() or nil
 	if not IsModifierKey(modifierKey) then return end
@@ -228,6 +262,40 @@ local function ClearBlisteringScalesTarget()
 	EasyPrescienceDB.blisteringScalesTarget = nil
 	UpdateBlisteringScalesMacro()
 	Msg("Blistering Scales cleared")
+end
+
+local function SetRescueTarget(fullName)
+	fullName = NormalizeName(fullName)
+	if not fullName then return end
+
+	EnsureDB()
+	EasyPrescienceDB.rescueTarget = fullName
+	UpdateRescueMacro()
+	Msg("Rescue Alt =", fullName)
+end
+
+local function ClearRescueTarget()
+	EnsureDB()
+	EasyPrescienceDB.rescueTarget = nil
+	UpdateRescueMacro()
+	Msg("Rescue Alt cleared")
+end
+
+local function SetSpatialParadoxTarget(fullName)
+	fullName = NormalizeName(fullName)
+	if not fullName then return end
+
+	EnsureDB()
+	EasyPrescienceDB.spatialParadoxTarget = fullName
+	UpdateSpatialParadoxMacro()
+	Msg("Spatial Paradox Alt =", fullName)
+end
+
+local function ClearSpatialParadoxTarget()
+	EnsureDB()
+	EasyPrescienceDB.spatialParadoxTarget = nil
+	UpdateSpatialParadoxMacro()
+	Msg("Spatial Paradox Alt cleared")
 end
 
 local function GetContextUnit(contextData)
@@ -284,6 +352,14 @@ local function InjectMenu(ownerRegion, rootDescription, contextData)
 	rootDescription:CreateButton("Set Blistering Scales", function()
 		SetBlisteringScalesTarget(targetName)
 	end)
+
+	rootDescription:CreateButton("Set Rescue", function()
+		SetRescueTarget(targetName)
+	end)
+
+	rootDescription:CreateButton("Set Spatial Paradox", function()
+		SetSpatialParadoxTarget(targetName)
+	end)
 end
 
 local function TryHookMenu(key)
@@ -335,6 +411,12 @@ frame:SetScript("OnEvent", function(_, event)
 		if EasyPrescienceDB.blisteringScalesTarget then
 			UpdateBlisteringScalesMacro()
 		end
+		if EasyPrescienceDB.rescueTarget then
+			UpdateRescueMacro()
+		end
+		if EasyPrescienceDB.spatialParadoxTarget then
+			UpdateSpatialParadoxMacro()
+		end
 		return
 	end
 
@@ -353,17 +435,27 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 	if command == "" then
 		Msg("macro =", EasyPrescienceDB.macroName)
 		Msg("Blistering Scales macro =", EasyPrescienceDB.blisteringScalesMacroName)
+		Msg("Rescue macro =", EasyPrescienceDB.rescueMacroName)
+		Msg("Spatial Paradox macro =", EasyPrescienceDB.spatialParadoxMacroName)
 		for _, key in ipairs(MODIFIER_KEYS) do
 			Msg(DISPLAY_KEYS[key] .. " =", EasyPrescienceDB.targets[key] or "")
 		end
 		Msg("Blistering Scales =", EasyPrescienceDB.blisteringScalesTarget or "")
+		Msg("Rescue Alt =", EasyPrescienceDB.rescueTarget or "")
+		Msg("Spatial Paradox Alt =", EasyPrescienceDB.spatialParadoxTarget or "")
 		Msg("Commands:")
 		Msg("/ep macro <name>")
 		Msg("/ep blisteringmacro <name>")
+		Msg("/ep rescuemacro <name>")
+		Msg("/ep spatialmacro <name>")
 		Msg("/ep set <shift|alt|ctrl> <player[-realm]>")
 		Msg("/ep blistering <player[-realm]>")
+		Msg("/ep rescue <player[-realm]>")
+		Msg("/ep spatial <player[-realm]>")
 		Msg("/ep clear <shift|alt|ctrl>")
 		Msg("/ep clear blistering")
+		Msg("/ep clear rescue")
+		Msg("/ep clear spatial")
 		Msg("/ep update")
 		return
 	end
@@ -379,6 +471,20 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 		EasyPrescienceDB.blisteringScalesMacroName = rest
 		UpdateBlisteringScalesMacro()
 		Msg("Blistering Scales macro =", rest)
+		return
+	end
+
+	if command == "rescuemacro" and rest ~= "" then
+		EasyPrescienceDB.rescueMacroName = rest
+		UpdateRescueMacro()
+		Msg("Rescue macro =", rest)
+		return
+	end
+
+	if command == "spatialmacro" and rest ~= "" then
+		EasyPrescienceDB.spatialParadoxMacroName = rest
+		UpdateSpatialParadoxMacro()
+		Msg("Spatial Paradox macro =", rest)
 		return
 	end
 
@@ -406,14 +512,40 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 		return
 	end
 
+	if command == "rescue" and rest ~= "" then
+		if not NormalizeName(rest) then
+			Err("Missing player name.")
+			return
+		end
+		SetRescueTarget(rest)
+		return
+	end
+
+	if command == "spatial" and rest ~= "" then
+		if not NormalizeName(rest) then
+			Err("Missing player name.")
+			return
+		end
+		SetSpatialParadoxTarget(rest)
+		return
+	end
+
 	if command == "clear" and rest ~= "" then
 		local key = rest:upper()
 		if key == "BLISTERING" then
 			ClearBlisteringScalesTarget()
 			return
 		end
+		if key == "RESCUE" then
+			ClearRescueTarget()
+			return
+		end
+		if key == "SPATIAL" then
+			ClearSpatialParadoxTarget()
+			return
+		end
 		if not IsModifierKey(key) then
-			Err("Invalid clear target. Use: shift, alt, ctrl, or blistering.")
+			Err("Invalid clear target. Use: shift, alt, ctrl, blistering, rescue, or spatial.")
 			return
 		end
 		ClearModifierTarget(key)
@@ -424,6 +556,12 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 		UpdatePrescienceMacro()
 		if EasyPrescienceDB.blisteringScalesTarget then
 			UpdateBlisteringScalesMacro()
+		end
+		if EasyPrescienceDB.rescueTarget then
+			UpdateRescueMacro()
+		end
+		if EasyPrescienceDB.spatialParadoxTarget then
+			UpdateSpatialParadoxMacro()
 		end
 		return
 	end

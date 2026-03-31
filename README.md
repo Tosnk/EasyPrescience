@@ -1,109 +1,79 @@
 # EasyPrescience
 
-EasyPrescience is a lightweight World of Warcraft addon that lets you assign **Prescience** and **Blistering Scales** targets directly from the **right-click unit context menu** and automatically creates or updates the related macros.
+EasyPrescience is a lightweight utility addon for Augmentation Evokers that lets you assign **Prescience**, **Blistering Scales**, **Rescue**, and **Spatial Paradox** targets directly from the right-click unit context menu on party, raid, target, and nameplate frames, while automatically creating and updating the related macros.
 
-## What changed
-
-This version uses a cleaner and more reliable workflow:
-
-- No modifier -> **casts Prescience normally**
-- **Shift** -> casts on the player stored for Shift
-- **Alt** -> casts on the player stored for Alt
-- **Ctrl** -> casts on the player stored for Ctrl
-- **Blistering Scales** gets its own dedicated target and macro with no modifier support
-
-It also includes a menu update pass so target reassignments keep working more consistently after roster or group changes.
+It is built for fast target setup with minimal friction and is especially useful in raid and group content where assignments need to be changed quickly.
 
 ## Features
 
-- Right-click any supported player frame and assign a target to:
+- Right-click any supported player unit frame and assign it to:
   - **Set on Shift**
   - **Set on Alt**
   - **Set on Ctrl**
   - **Set Blistering Scales**
-- No modifier still behaves like a normal **Prescience** cast
-- **Blistering Scales** uses a separate single-target macro
+  - **Set Rescue**
+  - **Set Spatial Paradox**
+- No modifier casts **Prescience**, **Rescue**, and **Spatial Paradox** normally
+- Holding **Shift / Alt / Ctrl** casts **Prescience** on the player assigned to that modifier
+- Holding **Alt** casts **Rescue** on the assigned player
+- Holding **Alt** casts **Spatial Paradox** on the assigned player
+- **Blistering Scales** uses its own dedicated target and macro with no modifier support
+- Automatically creates macros if they do not already exist
+- Automatically updates macros when assignments change
 - Works in **Raid / Party / Arena / Battlegrounds**
-- Automatically **creates macros** if they don't exist
-- Automatically **updates macros** when targets change
-- Minimal setup, no extra UI
-
-## How it works
-
-EasyPrescience adds four entries to supported unit context menus for player units:
-
-- **Set on Shift**
-- **Set on Alt**
-- **Set on Ctrl**
-- **Set Blistering Scales**
-
-When clicked, the addon stores that player's name for the selected option and refreshes the relevant macro.
+- Minimal setup, no extra UI windows, lightweight footprint
 
 ## Macro behavior
 
-Prescience macro behavior:
+Prescience behavior:
 
-- No modifier -> normal **Prescience** cast
-- **Shift** held -> cast on stored **Shift** target
-- **Alt** held -> cast on stored **Alt** target
-- **Ctrl** held -> cast on stored **Ctrl** target
-- If a modifier target is not configured, the macro falls back to the normal cast
+- No modifier -> casts **Prescience** normally
+- Shift -> casts on the player assigned to **Shift**
+- Alt -> casts on the player assigned to **Alt**
+- Ctrl -> casts on the player assigned to **Ctrl**
 
-Blistering Scales macro behavior:
+Blistering Scales behavior:
 
-- Casts **Blistering Scales** on the stored player name
+- Casts **Blistering Scales** on the assigned player name
 - Uses no modifier support
 
-## Macro creation
+Rescue behavior:
 
-By default, EasyPrescience creates or updates these macros:
+- No modifier -> casts **Rescue** normally
+- Alt -> casts on the player assigned to **Rescue**
 
-- `PrescienceName`
-- `BlisteringScales`
+Spatial Paradox behavior:
 
-If a macro does not exist, the addon will create it automatically when allowed by the game client.
+- No modifier -> casts **Spatial Paradox** normally
+- Alt -> casts on the player assigned to **Spatial Paradox**
 
 ## Commands
 
-Type `/ep` to print current settings.
+- `/ep` - show current settings
+- `/ep macro <MacroName>` - set the Prescience macro name (default: `PrescienceName`)
+- `/ep blisteringmacro <MacroName>` - set the Blistering Scales macro name (default: `BlisteringScales`)
+- `/ep rescuemacro <MacroName>` - set the Rescue macro name (default: `RescueTarget`)
+- `/ep spatialmacro <MacroName>` - set the Spatial Paradox macro name (default: `SpatialParadox`)
+- `/ep set <shift|alt|ctrl> <player[-realm]>` - assign a Prescience target manually
+- `/ep blistering <player[-realm]>` - assign the Blistering Scales target manually
+- `/ep rescue <player[-realm]>` - assign the Rescue Alt target manually
+- `/ep spatial <player[-realm]>` - assign the Spatial Paradox Alt target manually
+- `/ep clear <shift|alt|ctrl>` - clear one Prescience target
+- `/ep clear blistering` - clear the Blistering Scales target
+- `/ep clear rescue` - clear the Rescue Alt target
+- `/ep clear spatial` - clear the Spatial Paradox Alt target
+- `/ep update` - force a macro refresh out of combat
 
-- `/ep macro <MacroName>`
-  Set which Prescience macro to create or update.
+## Notes
 
-- `/ep blisteringmacro <MacroName>`
-  Set which Blistering Scales macro to create or update.
-
-- `/ep set <shift|alt|ctrl> <player[-realm]>`
-  Assign a player to a Prescience modifier slot manually.
-
-- `/ep blistering <player[-realm]>`
-  Assign the Blistering Scales target manually.
-
-- `/ep clear <shift|alt|ctrl>`
-  Clear one Prescience modifier slot.
-
-- `/ep clear blistering`
-  Clear the Blistering Scales target.
-
-- `/ep update`
-  Force all configured macros to refresh.
-
-## Notes / Limitations
-
-- Blizzard blocks macro creation and editing in combat.
-- Most default unit-frame context menus are supported through the modern Menu API.
-- Some heavily customized unit-frame addons may use custom menus and may not expose these entries.
+- Macro creation and editing are blocked in combat due to Blizzard restrictions
+- Supports Blizzard unit menus and most common frames that use the modern Menu API
+- Includes fixes for assignment update issues when switching groups, so retargeting remains reliable without needing macro rename workarounds
 
 ## Author
 
-- **Dydko-Draenor**
-- Discord: **Nkvri#2705**
+Dydko-Draenor
 
 ## Codebase / Support
 
-This addon codebase is **AI-generated and structured for automated support and iteration**.
-It is ready for rapid changes, feature extensions, and maintenance in an automated workflow.
-
-## License
-
-MIT License (see `LICENSE.txt`).
+This addon codebase is AI-generated and structured for fast maintenance, automated support, and rapid feature iteration.

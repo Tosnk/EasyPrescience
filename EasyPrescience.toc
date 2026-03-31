@@ -2,7 +2,7 @@
 ## Title: EasyPrescience
 ## Notes: Assign Prescience to Shift/Alt/Ctrl from unit menus and auto-update/create your macro
 ## Author: Dydko-Draenor (Discord: Nkvri#2705)
-## Version: 1.3.0
+## Version: 1.4.0
 ## SavedVariables: EasyPrescienceDB
 
 EasyPrescience.lua
