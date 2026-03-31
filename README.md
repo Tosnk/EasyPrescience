@@ -18,8 +18,9 @@ Even though Prescience is Augmentation-specific, the addon still stays useful fo
 - **Set Verdant Embrace**
 - No modifier casts **Prescience** normally
 - Holding **Shift / Alt / Ctrl** casts **Prescience** on the player assigned to that modifier
-- Each non-Prescience support spell uses its own configurable modifier key from the Blizzard Settings panel
-- **Blistering Scales**, **Rescue**, **Spatial Paradox / Time Spiral**, and **Verdant Embrace** all cast normally by default and target the assigned player when their configured modifier is held
+- **Blistering Scales** always uses its stored addon target when one is configured
+- **Rescue**, **Spatial Paradox / Time Spiral**, and **Verdant Embrace** use their own configurable modifier keys from the Blizzard Settings panel
+- Those modifier-based utility spells cast normally by default and target the assigned player when their configured modifier is held
 - Default casting still preserves normal **mouseover / frame targeting** behavior
 - Automatically creates macros if they do not already exist
 - Automatically reviews and repairs missing, outdated, or manually modified macros
@@ -38,8 +39,8 @@ Prescience behavior:
 
 Blistering Scales behavior:
 
-- No modifier -> casts **Blistering Scales** normally
-- Configured modifier -> casts on the assigned player name
+- Casts **Blistering Scales** on the assigned player name when one is configured
+- Falls back to normal mouseover/default casting when no stored target is set
 
 Rescue behavior:
 
@@ -86,7 +87,7 @@ All configurable settings are available inside **Blizzard Settings -> AddOns -> 
 From there you can:
 
 - Rename every managed macro
-- Choose the modifier key used by every non-Prescience support spell
+- Choose the modifier key used by **Rescue**, **Spatial Paradox / Time Spiral**, and **Verdant Embrace**
 - Edit stored player targets directly
 - Pick targets from roster dropdowns when group members are available
 - Run a full macro review to recreate or repair managed macros

@@ -202,8 +202,9 @@ local function BuildSingleModifierTargetMacroBody(spellName, modifierKey, target
 	if normalizedTarget then
 		conditions[#conditions + 1] = "[mod:" .. normalizedModifier .. ",@" .. normalizedTarget .. ",help,nodead]"
 	end
-	conditions[#conditions + 1] = "[@mouseover,help,nodead]"
-	conditions[#conditions + 1] = "[]"
+	conditions[#conditions + 1] = "[mod:" .. normalizedModifier .. "]"
+	conditions[#conditions + 1] = "[nomod,@mouseover,help,nodead]"
+	conditions[#conditions + 1] = "[nomod]"
 
 	return table.concat({
 		"#showtooltip " .. spellName,
@@ -244,7 +245,7 @@ local function GetSpatialParadoxMacroSpellName()
 end
 
 local function BuildBlisteringScalesMacroBody()
-	return BuildSingleModifierTargetMacroBody("Blistering Scales", EasyPrescienceDB.blisteringScalesModifier, EasyPrescienceDB.blisteringScalesTarget)
+	return BuildDirectTargetMacroBody("Blistering Scales", EasyPrescienceDB.blisteringScalesTarget)
 end
 
 local function BuildRescueMacroBody()
@@ -785,12 +786,6 @@ local function RegisterOptionsPanel()
 	CreateLabel(content, "Support Spell Modifiers", 16, y)
 	y = y - 26
 
-	y = CreateModifierRow(content, y, "Blistering Scales", function()
-		return EasyPrescienceDB.blisteringScalesModifier
-	end, function(value)
-		SetSpellModifier("blisteringScalesModifier", value, "blistering", "Blistering Scales")
-	end)
-
 	y = CreateModifierRow(content, y, "Rescue", function()
 		return EasyPrescienceDB.rescueModifier
 	end, function(value)
@@ -933,7 +928,6 @@ local function HandleSlashStatus()
 		Msg("Prescience " .. DISPLAY_KEYS[key] .. " =", EasyPrescienceDB.targets[key] or "")
 	end
 	Msg("Blistering Scales =", EasyPrescienceDB.blisteringScalesTarget or "")
-	Msg("Blistering Scales modifier =", DISPLAY_KEYS[EasyPrescienceDB.blisteringScalesModifier])
 	Msg("Rescue =", EasyPrescienceDB.rescueTarget or "")
 	Msg("Rescue modifier =", DISPLAY_KEYS[EasyPrescienceDB.rescueModifier])
 	Msg("Spatial Paradox =", EasyPrescienceDB.spatialParadoxTarget or "")
