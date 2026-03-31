@@ -47,6 +47,7 @@ local hookedMenus = {}
 local optionsRefreshers = {}
 local optionsPanel
 local managedMacros
+local RefreshOptions
 
 local function GetNonPrescienceModifierOptions()
 	return {
@@ -397,7 +398,7 @@ local function CleanupStoredTargets()
 	Msg("Stored targets cleaned up.")
 end
 
-local function RefreshOptions()
+function RefreshOptions()
 	for _, refresh in ipairs(optionsRefreshers) do
 		refresh()
 	end
