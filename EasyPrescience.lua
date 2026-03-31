@@ -2,6 +2,7 @@ EasyPrescienceDB = EasyPrescienceDB or {}
 
 local ADDON = "EasyPrescience"
 local DEFAULT_MACRO_NAME = "PrescienceName"
+local DEFAULT_BLISTERING_SCALES_MACRO_NAME = "BlisteringScales"
 local MODIFIER_KEYS = { "SHIFT", "ALT", "CTRL" }
 local DISPLAY_KEYS = {
 	SHIFT = "Shift",
@@ -66,7 +67,7 @@ local function EnsureTargetsTable()
 end
 
 local function MigrateLegacyData()
-	if EasyPrescienceDB.schemaVersion == 2 then return end
+	if EasyPrescienceDB.schemaVersion == 3 then return end
 
 	EnsureTargetsTable()
 
@@ -83,13 +84,16 @@ local function MigrateLegacyData()
 	EasyPrescienceDB.alt = nil
 	EasyPrescienceDB.modKey = nil
 	EasyPrescienceDB.invert = nil
-	EasyPrescienceDB.schemaVersion = 2
+	EasyPrescienceDB.blisteringScalesTarget = NormalizeName(EasyPrescienceDB.blisteringScalesTarget)
+	EasyPrescienceDB.schemaVersion = 3
 end
 
 local function EnsureDB()
 	EasyPrescienceDB.macroName = EasyPrescienceDB.macroName or DEFAULT_MACRO_NAME
+	EasyPrescienceDB.blisteringScalesMacroName = EasyPrescienceDB.blisteringScalesMacroName or DEFAULT_BLISTERING_SCALES_MACRO_NAME
 	EnsureTargetsTable()
 	MigrateLegacyData()
+	EasyPrescienceDB.blisteringScalesTarget = NormalizeName(EasyPrescienceDB.blisteringScalesTarget)
 end
 
 local function MacroIndexByName(name)
@@ -98,7 +102,7 @@ local function MacroIndexByName(name)
 	return idx
 end
 
-local function BuildMacroBody()
+local function BuildPrescienceMacroBody()
 	local conditions = {}
 
 	for _, key in ipairs(MODIFIER_KEYS) do
@@ -116,10 +120,17 @@ local function BuildMacroBody()
 	}, "\n")
 end
 
-local function EnsureMacroExists()
-	EnsureDB()
+local function BuildBlisteringScalesMacroBody()
+	local targetName = NormalizeName(EasyPrescienceDB.blisteringScalesTarget)
+	local condition = targetName and ("[@" .. targetName .. ",help,nodead]") or "[]"
 
-	local name = EasyPrescienceDB.macroName
+	return table.concat({
+		"#showtooltip Blistering Scales",
+		"/cast " .. condition .. " Blistering Scales",
+	}, "\n")
+end
+
+local function EnsureMacroExists(name, body)
 	local idx = MacroIndexByName(name)
 	if idx then return idx end
 
@@ -142,7 +153,6 @@ local function EnsureMacroExists()
 
 	local perChar = canPerChar and 1 or 0
 	local icon = 134400
-	local body = BuildMacroBody()
 
 	local newIdx = CreateMacro(name, icon, body, perChar)
 	if not newIdx or newIdx == 0 then
@@ -154,7 +164,7 @@ local function EnsureMacroExists()
 	return newIdx
 end
 
-local function UpdateMacro()
+local function UpdateMacroByName(name, body)
 	EnsureDB()
 
 	if InCombatLockdown() then
@@ -162,15 +172,22 @@ local function UpdateMacro()
 		return
 	end
 
-	local idx = EnsureMacroExists()
+	local idx = EnsureMacroExists(name, body)
 	if not idx then return end
 
-	local body = BuildMacroBody()
 	local _, _, current = GetMacroInfo(idx)
 	if current ~= body then
 		EditMacro(idx, nil, nil, body)
-		Msg("Macro updated:", EasyPrescienceDB.macroName)
+		Msg("Macro updated:", name)
 	end
+end
+
+local function UpdatePrescienceMacro()
+	UpdateMacroByName(EasyPrescienceDB.macroName, BuildPrescienceMacroBody())
+end
+
+local function UpdateBlisteringScalesMacro()
+	UpdateMacroByName(EasyPrescienceDB.blisteringScalesMacroName, BuildBlisteringScalesMacroBody())
 end
 
 local function SetModifierTarget(modifierKey, fullName)
@@ -182,7 +199,7 @@ local function SetModifierTarget(modifierKey, fullName)
 
 	EnsureDB()
 	EasyPrescienceDB.targets[modifierKey] = fullName
-	UpdateMacro()
+	UpdatePrescienceMacro()
 	Msg(DISPLAY_KEYS[modifierKey] .. " =", fullName)
 end
 
@@ -192,8 +209,25 @@ local function ClearModifierTarget(modifierKey)
 
 	EnsureDB()
 	EasyPrescienceDB.targets[modifierKey] = nil
-	UpdateMacro()
+	UpdatePrescienceMacro()
 	Msg(DISPLAY_KEYS[modifierKey] .. " cleared")
+end
+
+local function SetBlisteringScalesTarget(fullName)
+	fullName = NormalizeName(fullName)
+	if not fullName then return end
+
+	EnsureDB()
+	EasyPrescienceDB.blisteringScalesTarget = fullName
+	UpdateBlisteringScalesMacro()
+	Msg("Blistering Scales =", fullName)
+end
+
+local function ClearBlisteringScalesTarget()
+	EnsureDB()
+	EasyPrescienceDB.blisteringScalesTarget = nil
+	UpdateBlisteringScalesMacro()
+	Msg("Blistering Scales cleared")
 end
 
 local function GetContextUnit(contextData)
@@ -246,6 +280,10 @@ local function InjectMenu(ownerRegion, rootDescription, contextData)
 			SetModifierTarget(modifierKey, targetName)
 		end)
 	end
+
+	rootDescription:CreateButton("Set Blistering Scales", function()
+		SetBlisteringScalesTarget(targetName)
+	end)
 end
 
 local function TryHookMenu(key)
@@ -293,7 +331,10 @@ frame:SetScript("OnEvent", function(_, event)
 
 	if event == "PLAYER_LOGIN" then
 		HookMenus()
-		UpdateMacro()
+		UpdatePrescienceMacro()
+		if EasyPrescienceDB.blisteringScalesTarget then
+			UpdateBlisteringScalesMacro()
+		end
 		return
 	end
 
@@ -311,21 +352,33 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 
 	if command == "" then
 		Msg("macro =", EasyPrescienceDB.macroName)
+		Msg("Blistering Scales macro =", EasyPrescienceDB.blisteringScalesMacroName)
 		for _, key in ipairs(MODIFIER_KEYS) do
 			Msg(DISPLAY_KEYS[key] .. " =", EasyPrescienceDB.targets[key] or "")
 		end
+		Msg("Blistering Scales =", EasyPrescienceDB.blisteringScalesTarget or "")
 		Msg("Commands:")
 		Msg("/ep macro <name>")
+		Msg("/ep blisteringmacro <name>")
 		Msg("/ep set <shift|alt|ctrl> <player[-realm]>")
+		Msg("/ep blistering <player[-realm]>")
 		Msg("/ep clear <shift|alt|ctrl>")
+		Msg("/ep clear blistering")
 		Msg("/ep update")
 		return
 	end
 
 	if command == "macro" and rest ~= "" then
 		EasyPrescienceDB.macroName = rest
-		UpdateMacro()
+		UpdatePrescienceMacro()
 		Msg("macro =", rest)
+		return
+	end
+
+	if command == "blisteringmacro" and rest ~= "" then
+		EasyPrescienceDB.blisteringScalesMacroName = rest
+		UpdateBlisteringScalesMacro()
+		Msg("Blistering Scales macro =", rest)
 		return
 	end
 
@@ -344,10 +397,23 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 		return
 	end
 
+	if command == "blistering" and rest ~= "" then
+		if not NormalizeName(rest) then
+			Err("Missing player name.")
+			return
+		end
+		SetBlisteringScalesTarget(rest)
+		return
+	end
+
 	if command == "clear" and rest ~= "" then
 		local key = rest:upper()
+		if key == "BLISTERING" then
+			ClearBlisteringScalesTarget()
+			return
+		end
 		if not IsModifierKey(key) then
-			Err("Invalid modifier. Use: shift, alt, or ctrl.")
+			Err("Invalid clear target. Use: shift, alt, ctrl, or blistering.")
 			return
 		end
 		ClearModifierTarget(key)
@@ -355,7 +421,10 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 	end
 
 	if command == "update" then
-		UpdateMacro()
+		UpdatePrescienceMacro()
+		if EasyPrescienceDB.blisteringScalesTarget then
+			UpdateBlisteringScalesMacro()
+		end
 		return
 	end
 
