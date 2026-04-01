@@ -80,6 +80,22 @@ local function NormalizeName(full)
 	return full
 end
 
+local function NormalizeAssignmentUnit(value)
+	value = Trim(value)
+	if not value then return nil end
+
+	value = value:lower()
+	if value == "player" then
+		return value
+	end
+
+	if value:match("^party%d+$") or value:match("^raid%d+$") then
+		return value
+	end
+
+	return nil
+end
+
 local function NormalizeMacroName(name, fallback)
 	name = Trim(name) or fallback
 	if not name then return nil end
@@ -98,25 +114,182 @@ local function FullUnitName(unit)
 	return NormalizeName(GetUnitName(unit, true))
 end
 
+local function BuildAssignmentData(unit)
+	local unitToken = NormalizeAssignmentUnit(unit)
+	if not unitToken or not UnitExists(unitToken) then return nil end
+
+	return {
+		unit = unitToken,
+		guid = UnitGUID(unitToken),
+		name = FullUnitName(unitToken),
+	}
+end
+
+local function NormalizeStoredAssignment(value)
+	if type(value) == "table" then
+		local unitToken = NormalizeAssignmentUnit(value.unit)
+		local guid = type(value.guid) == "string" and value.guid or nil
+		local name = NormalizeName(value.name)
+		if not unitToken and not guid and not name then
+			return nil
+		end
+		return {
+			unit = unitToken,
+			guid = guid,
+			name = name,
+		}
+	end
+
+	local unitToken = NormalizeAssignmentUnit(value)
+	if unitToken then
+		return {
+			unit = unitToken,
+			guid = UnitExists(unitToken) and UnitGUID(unitToken) or nil,
+			name = FullUnitName(unitToken),
+		}
+	end
+
+	local name = NormalizeName(value)
+	if name then
+		return { name = name }
+	end
+end
+
+local function GetAssignmentUnit(value)
+	local assignment = NormalizeStoredAssignment(value)
+	return assignment and NormalizeAssignmentUnit(assignment.unit) or nil
+end
+
+local function GetAssignmentDisplayValue(value)
+	local assignment = NormalizeStoredAssignment(value)
+	if not assignment then return "" end
+
+	local unitToken = NormalizeAssignmentUnit(assignment.unit)
+	if not unitToken then
+		return assignment.name or ""
+	end
+
+	local fullName = FullUnitName(unitToken)
+	if fullName then
+		return fullName .. " (" .. unitToken .. ")"
+	end
+
+	return (assignment.name or unitToken) .. " (" .. unitToken .. ")"
+end
+
 local function EnsureTargetsTable()
 	if type(EasyPrescienceDB.targets) ~= "table" then
 		EasyPrescienceDB.targets = {}
 	end
 
 	for _, key in ipairs(MODIFIER_KEYS) do
-		EasyPrescienceDB.targets[key] = NormalizeName(EasyPrescienceDB.targets[key])
+		EasyPrescienceDB.targets[key] = NormalizeStoredAssignment(EasyPrescienceDB.targets[key])
 	end
 end
 
-local function MigrateLegacyData()
-	if EasyPrescienceDB.schemaVersion == 5 then return end
+local function ResolveGroupUnitToken(unit)
+	if not unit or not UnitExists(unit) then return nil end
+	if UnitIsUnit(unit, "player") then
+		return "player"
+	end
 
+	if IsInRaid() then
+		for index = 1, 40 do
+			local raidUnit = "raid" .. index
+			if UnitExists(raidUnit) and UnitIsUnit(unit, raidUnit) then
+				return raidUnit
+			end
+		end
+	elseif IsInGroup() then
+		for index = 1, 4 do
+			local partyUnit = "party" .. index
+			if UnitExists(partyUnit) and UnitIsUnit(unit, partyUnit) then
+				return partyUnit
+			end
+		end
+	end
+
+	return nil
+end
+
+local function ResolveAssignmentUnitByName(fullName)
+	fullName = NormalizeName(fullName)
+	if not fullName then return nil end
+
+	local playerName = FullUnitName("player")
+	if playerName and playerName == fullName then
+		return "player"
+	end
+
+	if IsInRaid() then
+		for index = 1, 40 do
+			local raidUnit = "raid" .. index
+			if FullUnitName(raidUnit) == fullName then
+				return raidUnit
+			end
+		end
+	elseif IsInGroup() then
+		for index = 1, 4 do
+			local partyUnit = "party" .. index
+			if FullUnitName(partyUnit) == fullName then
+				return partyUnit
+			end
+		end
+	end
+
+	return nil
+end
+
+local function FindGroupUnitByGUID(guid)
+	if type(guid) ~= "string" or guid == "" then return nil end
+
+	if UnitExists("player") and UnitGUID("player") == guid then
+		return "player"
+	end
+
+	if IsInRaid() then
+		for index = 1, 40 do
+			local raidUnit = "raid" .. index
+			if UnitExists(raidUnit) and UnitGUID(raidUnit) == guid then
+				return raidUnit
+			end
+		end
+	elseif IsInGroup() then
+		for index = 1, 4 do
+			local partyUnit = "party" .. index
+			if UnitExists(partyUnit) and UnitGUID(partyUnit) == guid then
+				return partyUnit
+			end
+		end
+	end
+
+	return nil
+end
+
+local function ResolveAssignmentDataByName(fullName)
+	local unitToken = ResolveAssignmentUnitByName(fullName)
+	if not unitToken then return nil end
+	return BuildAssignmentData(unitToken)
+end
+
+local function MigrateLegacyData()
+	if EasyPrescienceDB.schemaVersion == 7 then return end
+
+	local legacyTargets = type(EasyPrescienceDB.targets) == "table" and EasyPrescienceDB.targets or nil
 	EnsureTargetsTable()
+
+	if legacyTargets then
+		for _, key in ipairs(MODIFIER_KEYS) do
+			if not EasyPrescienceDB.targets[key] then
+				EasyPrescienceDB.targets[key] = NormalizeStoredAssignment(legacyTargets[key]) or ResolveAssignmentDataByName(legacyTargets[key])
+			end
+		end
+	end
 
 	local legacyKey = type(EasyPrescienceDB.modKey) == "string" and EasyPrescienceDB.modKey:upper() or "ALT"
 	if IsModifierKey(legacyKey) and not EasyPrescienceDB.targets[legacyKey] then
 		local legacyTarget = EasyPrescienceDB.invert and EasyPrescienceDB.main or EasyPrescienceDB.alt
-		legacyTarget = NormalizeName(legacyTarget)
+		legacyTarget = ResolveAssignmentDataByName(legacyTarget)
 		if legacyTarget then
 			EasyPrescienceDB.targets[legacyKey] = legacyTarget
 		end
@@ -126,15 +299,15 @@ local function MigrateLegacyData()
 	EasyPrescienceDB.alt = nil
 	EasyPrescienceDB.modKey = nil
 	EasyPrescienceDB.invert = nil
-	EasyPrescienceDB.blisteringScalesTarget = NormalizeName(EasyPrescienceDB.blisteringScalesTarget)
-	EasyPrescienceDB.rescueTarget = NormalizeName(EasyPrescienceDB.rescueTarget)
-	EasyPrescienceDB.spatialParadoxTarget = NormalizeName(EasyPrescienceDB.spatialParadoxTarget)
-	EasyPrescienceDB.verdantEmbraceTarget = NormalizeName(EasyPrescienceDB.verdantEmbraceTarget)
+	EasyPrescienceDB.blisteringScalesTarget = NormalizeStoredAssignment(EasyPrescienceDB.blisteringScalesTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.blisteringScalesTarget)
+	EasyPrescienceDB.rescueTarget = NormalizeStoredAssignment(EasyPrescienceDB.rescueTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.rescueTarget)
+	EasyPrescienceDB.spatialParadoxTarget = NormalizeStoredAssignment(EasyPrescienceDB.spatialParadoxTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.spatialParadoxTarget)
+	EasyPrescienceDB.verdantEmbraceTarget = NormalizeStoredAssignment(EasyPrescienceDB.verdantEmbraceTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.verdantEmbraceTarget)
 	EasyPrescienceDB.blisteringScalesModifier = IsModifierKey(EasyPrescienceDB.blisteringScalesModifier) and EasyPrescienceDB.blisteringScalesModifier or "ALT"
 	EasyPrescienceDB.rescueModifier = IsModifierKey(EasyPrescienceDB.rescueModifier) and EasyPrescienceDB.rescueModifier or "ALT"
 	EasyPrescienceDB.spatialParadoxModifier = IsModifierKey(EasyPrescienceDB.spatialParadoxModifier) and EasyPrescienceDB.spatialParadoxModifier or "ALT"
 	EasyPrescienceDB.verdantEmbraceModifier = IsModifierKey(EasyPrescienceDB.verdantEmbraceModifier) and EasyPrescienceDB.verdantEmbraceModifier or "ALT"
-	EasyPrescienceDB.schemaVersion = 5
+	EasyPrescienceDB.schemaVersion = 7
 end
 
 local function EnsureDB()
@@ -143,12 +316,12 @@ local function EnsureDB()
 	EasyPrescienceDB.rescueMacroName = NormalizeMacroName(EasyPrescienceDB.rescueMacroName, DEFAULT_RESCUE_MACRO_NAME)
 	EasyPrescienceDB.spatialParadoxMacroName = NormalizeMacroName(EasyPrescienceDB.spatialParadoxMacroName, DEFAULT_SPATIAL_PARADOX_MACRO_NAME)
 	EasyPrescienceDB.verdantEmbraceMacroName = NormalizeMacroName(EasyPrescienceDB.verdantEmbraceMacroName, DEFAULT_VERDANT_EMBRACE_MACRO_NAME)
-	EnsureTargetsTable()
 	MigrateLegacyData()
-	EasyPrescienceDB.blisteringScalesTarget = NormalizeName(EasyPrescienceDB.blisteringScalesTarget)
-	EasyPrescienceDB.rescueTarget = NormalizeName(EasyPrescienceDB.rescueTarget)
-	EasyPrescienceDB.spatialParadoxTarget = NormalizeName(EasyPrescienceDB.spatialParadoxTarget)
-	EasyPrescienceDB.verdantEmbraceTarget = NormalizeName(EasyPrescienceDB.verdantEmbraceTarget)
+	EnsureTargetsTable()
+	EasyPrescienceDB.blisteringScalesTarget = NormalizeStoredAssignment(EasyPrescienceDB.blisteringScalesTarget)
+	EasyPrescienceDB.rescueTarget = NormalizeStoredAssignment(EasyPrescienceDB.rescueTarget)
+	EasyPrescienceDB.spatialParadoxTarget = NormalizeStoredAssignment(EasyPrescienceDB.spatialParadoxTarget)
+	EasyPrescienceDB.verdantEmbraceTarget = NormalizeStoredAssignment(EasyPrescienceDB.verdantEmbraceTarget)
 	EasyPrescienceDB.blisteringScalesModifier = IsModifierKey(EasyPrescienceDB.blisteringScalesModifier) and EasyPrescienceDB.blisteringScalesModifier or "ALT"
 	EasyPrescienceDB.rescueModifier = IsModifierKey(EasyPrescienceDB.rescueModifier) and EasyPrescienceDB.rescueModifier or "ALT"
 	EasyPrescienceDB.spatialParadoxModifier = IsModifierKey(EasyPrescienceDB.spatialParadoxModifier) and EasyPrescienceDB.spatialParadoxModifier or "ALT"
@@ -165,9 +338,9 @@ local function BuildPrescienceMacroBody()
 	local conditions = {}
 
 	for _, key in ipairs(MODIFIER_KEYS) do
-		local targetName = NormalizeName(EasyPrescienceDB.targets[key])
-		if targetName then
-			conditions[#conditions + 1] = "[mod:" .. key:lower() .. ",@" .. targetName .. ",help,nodead]"
+		local unitToken = GetAssignmentUnit(EasyPrescienceDB.targets[key])
+		if unitToken then
+			conditions[#conditions + 1] = "[mod:" .. key:lower() .. ",@" .. unitToken .. ",help,nodead]"
 		end
 	end
 
@@ -181,7 +354,7 @@ local function BuildPrescienceMacroBody()
 end
 
 local function BuildDirectTargetMacroBody(spellName, targetName)
-	local normalizedTarget = NormalizeName(targetName)
+	local normalizedTarget = GetAssignmentUnit(targetName)
 	local conditions = {}
 	if normalizedTarget then
 		conditions[#conditions + 1] = "[@" .. normalizedTarget .. ",help,nodead]"
@@ -196,7 +369,7 @@ local function BuildDirectTargetMacroBody(spellName, targetName)
 end
 
 local function BuildSingleModifierTargetMacroBody(spellName, modifierKey, targetName)
-	local normalizedTarget = NormalizeName(targetName)
+	local normalizedTarget = GetAssignmentUnit(targetName)
 	local normalizedModifier = IsModifierKey(modifierKey) and modifierKey:lower() or "alt"
 	local conditions = {}
 	if normalizedTarget then
@@ -257,7 +430,7 @@ local function BuildSpatialParadoxMacroBody()
 end
 
 local function BuildVerdantEmbraceMacroBody()
-	local normalizedTarget = NormalizeName(EasyPrescienceDB.verdantEmbraceTarget)
+	local normalizedTarget = GetAssignmentUnit(EasyPrescienceDB.verdantEmbraceTarget)
 	local normalizedModifier = IsModifierKey(EasyPrescienceDB.verdantEmbraceModifier) and EasyPrescienceDB.verdantEmbraceModifier:lower() or "alt"
 	local conditions = {}
 	if normalizedTarget then
@@ -408,51 +581,35 @@ local function DeleteManagedMacros()
 	end
 end
 
-local function CleanupStoredTargets()
-	EnsureDB()
-
-	for _, key in ipairs(MODIFIER_KEYS) do
-		EasyPrescienceDB.targets[key] = NormalizeName(EasyPrescienceDB.targets[key])
-	end
-
-	EasyPrescienceDB.blisteringScalesTarget = NormalizeName(EasyPrescienceDB.blisteringScalesTarget)
-	EasyPrescienceDB.rescueTarget = NormalizeName(EasyPrescienceDB.rescueTarget)
-	EasyPrescienceDB.spatialParadoxTarget = NormalizeName(EasyPrescienceDB.spatialParadoxTarget)
-	EasyPrescienceDB.verdantEmbraceTarget = NormalizeName(EasyPrescienceDB.verdantEmbraceTarget)
-
-	RefreshOptions()
-	Msg("Stored targets cleaned up.")
-end
-
 function RefreshOptions()
 	for _, refresh in ipairs(optionsRefreshers) do
 		refresh()
 	end
 end
 
-local function SetModifierTarget(modifierKey, fullName, silent)
+local function SetModifierTarget(modifierKey, assignment, silent)
 	modifierKey = type(modifierKey) == "string" and modifierKey:upper() or nil
 	if not IsModifierKey(modifierKey) then return end
 
 	EnsureDB()
-	EasyPrescienceDB.targets[modifierKey] = NormalizeName(fullName)
+	EasyPrescienceDB.targets[modifierKey] = NormalizeStoredAssignment(assignment)
 	ReconcileManagedMacroByID("prescience", silent)
 	RefreshOptions()
 
 	if not silent then
-		Msg(DISPLAY_KEYS[modifierKey] .. " =", EasyPrescienceDB.targets[modifierKey] or "")
+		Msg(DISPLAY_KEYS[modifierKey] .. " =", GetAssignmentDisplayValue(EasyPrescienceDB.targets[modifierKey]))
 	end
 end
 
 local function SetDirectTarget(field, value, macroID, label, silent)
 	EnsureDB()
-	EasyPrescienceDB[field] = NormalizeName(value)
+	EasyPrescienceDB[field] = NormalizeStoredAssignment(value)
 	ReconcileManagedMacroByID(macroID, silent)
 	RefreshOptions()
 
 	if not silent then
 		if EasyPrescienceDB[field] then
-			Msg(label .. " =", EasyPrescienceDB[field])
+			Msg(label .. " =", GetAssignmentDisplayValue(EasyPrescienceDB[field]))
 		else
 			Msg(label .. " cleared")
 		end
@@ -487,6 +644,72 @@ local function SetMacroName(field, value, macroID, silent)
 	end
 end
 
+local function UpdateAssignmentForRoster(assignment, label, silent)
+	assignment = NormalizeStoredAssignment(assignment)
+	if not assignment then
+		return nil, false
+	end
+
+	local oldUnit = assignment.unit
+	local resolvedUnit = FindGroupUnitByGUID(assignment.guid)
+
+	if not resolvedUnit and assignment.name then
+		resolvedUnit = ResolveAssignmentUnitByName(assignment.name)
+	end
+
+	if not resolvedUnit then
+		if not silent then
+			Msg(label .. " assignment cleared because that player is no longer in your current party or raid.")
+		end
+		return nil, true
+	end
+
+	local updated = BuildAssignmentData(resolvedUnit) or {
+		unit = resolvedUnit,
+		guid = assignment.guid,
+		name = assignment.name,
+	}
+
+	if oldUnit ~= updated.unit and not silent then
+		Msg(label .. " reassigned to " .. GetAssignmentDisplayValue(updated) .. " after roster changes.")
+	end
+
+	local changed = oldUnit ~= updated.unit or assignment.guid ~= updated.guid or assignment.name ~= updated.name
+	return updated, changed
+end
+
+local function SyncAssignmentsToRoster(silent)
+	EnsureDB()
+
+	local changed = false
+
+	for _, key in ipairs(MODIFIER_KEYS) do
+		local updated, didChange = UpdateAssignmentForRoster(EasyPrescienceDB.targets[key], "Prescience " .. DISPLAY_KEYS[key], silent)
+		EasyPrescienceDB.targets[key] = updated
+		changed = changed or didChange
+	end
+
+	local fieldSpecs = {
+		{ field = "blisteringScalesTarget", label = "Blistering Scales" },
+		{ field = "rescueTarget", label = "Rescue" },
+		{ field = "spatialParadoxTarget", label = "Spatial Paradox / Time Spiral" },
+		{ field = "verdantEmbraceTarget", label = "Verdant Embrace" },
+	}
+
+	for _, spec in ipairs(fieldSpecs) do
+		local updated, didChange = UpdateAssignmentForRoster(EasyPrescienceDB[spec.field], spec.label, silent)
+		EasyPrescienceDB[spec.field] = updated
+		changed = changed or didChange
+	end
+
+	if changed then
+		ReconcileManagedMacros(true)
+	end
+
+	RefreshOptions()
+	return changed
+end
+
 local function GetContextUnit(contextData)
 	if type(contextData) ~= "table" then return nil end
 	return contextData.unit or contextData.unitToken or contextData.unitID
@@ -517,16 +740,19 @@ local function ResolveUnit(ownerRegion, contextData)
 	return nil
 end
 
-local function ResolveTargetName(ownerRegion, contextData)
+local function ResolveAssignmentUnit(ownerRegion, contextData)
 	local unit = ResolveUnit(ownerRegion, contextData)
-	local fullName = FullUnitName(unit)
-	if fullName then return fullName end
-	return GetContextName(contextData)
+	local unitToken = ResolveGroupUnitToken(unit)
+	if unitToken then
+		return BuildAssignmentData(unitToken)
+	end
+
+	return ResolveAssignmentDataByName(GetContextName(contextData))
 end
 
 local function InjectMenu(ownerRegion, rootDescription, contextData)
-	local targetName = ResolveTargetName(ownerRegion, contextData)
-	if not targetName then return end
+	local assignment = ResolveAssignmentUnit(ownerRegion, contextData)
+	if not assignment then return end
 
 	rootDescription:CreateDivider()
 	rootDescription:CreateTitle("EasyPrescience")
@@ -534,24 +760,24 @@ local function InjectMenu(ownerRegion, rootDescription, contextData)
 	for _, key in ipairs(MODIFIER_KEYS) do
 		local modifierKey = key
 		rootDescription:CreateButton("Set on " .. DISPLAY_KEYS[modifierKey], function()
-			SetModifierTarget(modifierKey, targetName)
+			SetModifierTarget(modifierKey, assignment)
 		end)
 	end
 
 	rootDescription:CreateButton("Set Blistering Scales", function()
-		SetDirectTarget("blisteringScalesTarget", targetName, "blistering", "Blistering Scales")
+		SetDirectTarget("blisteringScalesTarget", assignment, "blistering", "Blistering Scales")
 	end)
 
 	rootDescription:CreateButton("Set Rescue", function()
-		SetDirectTarget("rescueTarget", targetName, "rescue", "Rescue")
+		SetDirectTarget("rescueTarget", assignment, "rescue", "Rescue")
 	end)
 
 	rootDescription:CreateButton("Set Spatial Paradox", function()
-		SetDirectTarget("spatialParadoxTarget", targetName, "spatialParadox", "Spatial Paradox")
+		SetDirectTarget("spatialParadoxTarget", assignment, "spatialParadox", "Spatial Paradox")
 	end)
 
 	rootDescription:CreateButton("Set Verdant Embrace", function()
-		SetDirectTarget("verdantEmbraceTarget", targetName, "verdantEmbrace", "Verdant Embrace")
+		SetDirectTarget("verdantEmbraceTarget", assignment, "verdantEmbrace", "Verdant Embrace")
 	end)
 end
 
@@ -592,40 +818,6 @@ local function HookMenus()
 	end
 end
 
-local function BuildRosterChoices(currentValue)
-	local seen = {}
-	local names = {}
-
-	local function addName(name)
-		name = NormalizeName(name)
-		if not name or seen[name] then return end
-		seen[name] = true
-		names[#names + 1] = name
-	end
-
-	addName(currentValue)
-	addName(FullUnitName("player"))
-	addName(FullUnitName("target"))
-	addName(FullUnitName("focus"))
-
-	if IsInRaid() then
-		for index = 1, 40 do
-			addName(FullUnitName("raid" .. index))
-		end
-	elseif IsInGroup() then
-		for index = 1, 4 do
-			addName(FullUnitName("party" .. index))
-		end
-	end
-
-	for index = 1, 5 do
-		addName(FullUnitName("arena" .. index))
-	end
-
-	table.sort(names)
-	return names
-end
-
 local function CreateLabel(parent, text, x, y, width)
 	local label = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 	label:SetPoint("TOPLEFT", x, y)
@@ -643,42 +835,6 @@ local function CreateEditBox(parent, width)
 	editBox:SetAutoFocus(false)
 	editBox:SetFontObject("ChatFontNormal")
 	return editBox
-end
-
-local function CreateTargetRow(parent, y, labelText, getValue, setValue)
-	local label = CreateLabel(parent, labelText, 16, y, 180)
-
-	local editBox = CreateEditBox(parent, 180)
-	editBox:SetPoint("TOPLEFT", label, "TOPRIGHT", 8, 2)
-	editBox:SetScript("OnEnterPressed", function(self)
-		self:ClearFocus()
-	end)
-	editBox:SetScript("OnEditFocusLost", function(self)
-		setValue(self:GetText())
-	end)
-
-	local dropdown = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
-	dropdown:SetPoint("TOPLEFT", editBox, "TOPRIGHT", -12, 8)
-	UIDropDownMenu_SetWidth(dropdown, 150)
-	UIDropDownMenu_SetText(dropdown, "Select")
-
-	UIDropDownMenu_Initialize(dropdown, function(self, level)
-		for _, name in ipairs(BuildRosterChoices(getValue())) do
-			local info = UIDropDownMenu_CreateInfo()
-			info.text = name
-			info.func = function()
-				setValue(name)
-			end
-			UIDropDownMenu_AddButton(info, level)
-		end
-	end)
-
-	optionsRefreshers[#optionsRefreshers + 1] = function()
-		editBox:SetText(getValue() or "")
-		UIDropDownMenu_SetText(dropdown, getValue() or "Select")
-	end
-
-	return y - 34
 end
 
 local function CreateMacroRow(parent, y, labelText, getValue, setValue, defaultValue)
@@ -760,7 +916,7 @@ local function RegisterOptionsPanel()
 	subtitle:SetPoint("TOPLEFT", 16, y)
 	subtitle:SetWidth(640)
 	subtitle:SetJustifyH("LEFT")
-	subtitle:SetText("Configure macro names, stored targets, and review all managed macros from the Blizzard AddOns settings panel.")
+	subtitle:SetText("Configure macro names, support spell modifiers, and review all managed macros from the Blizzard AddOns settings panel. Assignments are now captured from the unit context menu and stored as group unit slots.")
 	y = y - 40
 
 	CreateLabel(content, "Macro Names", 16, y)
@@ -819,52 +975,27 @@ local function RegisterOptionsPanel()
 	end)
 
 	y = y - 14
-	CreateLabel(content, "Stored Targets", 16, y)
+	CreateLabel(content, "Current Assignments", 16, y)
 	y = y - 26
 
-	y = CreateTargetRow(content, y, "Prescience Shift", function()
-		return EasyPrescienceDB.targets.SHIFT
-	end, function(value)
-		SetModifierTarget("SHIFT", value)
-	end)
+	local assignmentsLabel = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	assignmentsLabel:SetPoint("TOPLEFT", 16, y)
+	assignmentsLabel:SetWidth(640)
+	assignmentsLabel:SetJustifyH("LEFT")
 
-	y = CreateTargetRow(content, y, "Prescience Alt", function()
-		return EasyPrescienceDB.targets.ALT
-	end, function(value)
-		SetModifierTarget("ALT", value)
-	end)
+	optionsRefreshers[#optionsRefreshers + 1] = function()
+		assignmentsLabel:SetText(table.concat({
+			"Prescience Shift: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.SHIFT),
+			"Prescience Alt: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.ALT),
+			"Prescience Ctrl: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.CTRL),
+			"Blistering Scales: " .. GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget),
+			"Rescue: " .. GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget),
+			"Spatial Paradox / Time Spiral: " .. GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget),
+			"Verdant Embrace: " .. GetAssignmentDisplayValue(EasyPrescienceDB.verdantEmbraceTarget),
+		}, "\n"))
+	end
 
-	y = CreateTargetRow(content, y, "Prescience Ctrl", function()
-		return EasyPrescienceDB.targets.CTRL
-	end, function(value)
-		SetModifierTarget("CTRL", value)
-	end)
-
-	y = CreateTargetRow(content, y, "Blistering Scales", function()
-		return EasyPrescienceDB.blisteringScalesTarget
-	end, function(value)
-		SetDirectTarget("blisteringScalesTarget", value, "blistering", "Blistering Scales")
-	end)
-
-	y = CreateTargetRow(content, y, "Rescue", function()
-		return EasyPrescienceDB.rescueTarget
-	end, function(value)
-		SetDirectTarget("rescueTarget", value, "rescue", "Rescue")
-	end)
-
-	y = CreateTargetRow(content, y, "Spatial Paradox", function()
-		return EasyPrescienceDB.spatialParadoxTarget
-	end, function(value)
-		SetDirectTarget("spatialParadoxTarget", value, "spatialParadox", "Spatial Paradox")
-	end)
-
-	y = CreateTargetRow(content, y, "Verdant Embrace", function()
-		return EasyPrescienceDB.verdantEmbraceTarget
-	end, function(value)
-		SetDirectTarget("verdantEmbraceTarget", value, "verdantEmbrace", "Verdant Embrace")
-	end)
-
-	y = y - 14
+	y = y - 126
 	CreateLabel(content, "Actions", 16, y)
 	y = y - 28
 
@@ -887,7 +1018,7 @@ local function RegisterOptionsPanel()
 	helpLabel:SetPoint("TOPLEFT", 16, y)
 	helpLabel:SetWidth(640)
 	helpLabel:SetJustifyH("LEFT")
-	helpLabel:SetText("Slash commands still work, but everything configurable is now available here. Spatial Paradox automatically swaps to Time Spiral when that talent is selected and updates again when talents change.")
+	helpLabel:SetText("Use the right-click unit menu to assign targets. EasyPrescience stores group unit slots like party1 and raid3 instead of player names, then rebuilds macros automatically. Spatial Paradox automatically swaps to Time Spiral when that talent is selected and updates again when talents change.")
 	y = y - 44
 
 	local deleteButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
@@ -905,20 +1036,7 @@ local function RegisterOptionsPanel()
 	deleteLabel:SetText("Deletes every macro managed by EasyPrescience so uninstalling the addon is easier.")
 	y = y - 38
 
-	local cleanupButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-	cleanupButton:SetSize(180, 24)
-	cleanupButton:SetPoint("TOPLEFT", 16, y)
-	cleanupButton:SetText("Cleanup Stored Targets")
-	cleanupButton:SetScript("OnClick", function()
-		CleanupStoredTargets()
-	end)
-
-	local cleanupLabel = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	cleanupLabel:SetPoint("LEFT", cleanupButton, "RIGHT", 12, 0)
-	cleanupLabel:SetWidth(420)
-	cleanupLabel:SetJustifyH("LEFT")
-	cleanupLabel:SetText("Normalizes saved player targets and refreshes the settings display.")
-	y = y - 50
+	y = y - 12
 
 	content:SetHeight(-y + 20)
 
@@ -939,14 +1057,14 @@ local function HandleSlashStatus()
 		Msg(spec.label .. " macro =", EasyPrescienceDB[spec.macroField])
 	end
 	for _, key in ipairs(MODIFIER_KEYS) do
-		Msg("Prescience " .. DISPLAY_KEYS[key] .. " =", EasyPrescienceDB.targets[key] or "")
+		Msg("Prescience " .. DISPLAY_KEYS[key] .. " =", GetAssignmentDisplayValue(EasyPrescienceDB.targets[key]))
 	end
-	Msg("Blistering Scales =", EasyPrescienceDB.blisteringScalesTarget or "")
-	Msg("Rescue =", EasyPrescienceDB.rescueTarget or "")
+	Msg("Blistering Scales =", GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget))
+	Msg("Rescue =", GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget))
 	Msg("Rescue modifier =", DISPLAY_KEYS[EasyPrescienceDB.rescueModifier])
-	Msg("Spatial Paradox =", EasyPrescienceDB.spatialParadoxTarget or "")
+	Msg("Spatial Paradox =", GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget))
 	Msg("Spatial Paradox modifier =", DISPLAY_KEYS[EasyPrescienceDB.spatialParadoxModifier])
-	Msg("Verdant Embrace =", EasyPrescienceDB.verdantEmbraceTarget or "")
+	Msg("Verdant Embrace =", GetAssignmentDisplayValue(EasyPrescienceDB.verdantEmbraceTarget))
 	Msg("Verdant Embrace modifier =", DISPLAY_KEYS[EasyPrescienceDB.verdantEmbraceModifier])
 end
 
@@ -961,13 +1079,14 @@ frame:SetScript("OnEvent", function(_, event)
 	if event == "PLAYER_LOGIN" then
 		HookMenus()
 		RegisterOptionsPanel()
+		SyncAssignmentsToRoster(true)
 		ReconcileManagedMacros(true)
 		return
 	end
 
 	if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
 		HookMenus()
-		RefreshOptions()
+		SyncAssignmentsToRoster(event ~= "GROUP_ROSTER_UPDATE")
 		return
 	end
 
@@ -1015,37 +1134,6 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 		return
 	end
 
-	if command == "set" and rest ~= "" then
-		local key, name = rest:match("^(%S+)%s+(.+)$")
-		key = key and key:upper() or nil
-		if not IsModifierKey(key) then
-			Err("Invalid modifier. Use: shift, alt, or ctrl.")
-			return
-		end
-		SetModifierTarget(key, name)
-		return
-	end
-
-	if command == "blistering" and rest ~= "" then
-		SetDirectTarget("blisteringScalesTarget", rest, "blistering", "Blistering Scales")
-		return
-	end
-
-	if command == "rescue" and rest ~= "" then
-		SetDirectTarget("rescueTarget", rest, "rescue", "Rescue")
-		return
-	end
-
-	if command == "spatial" and rest ~= "" then
-		SetDirectTarget("spatialParadoxTarget", rest, "spatialParadox", "Spatial Paradox")
-		return
-	end
-
-	if command == "verdant" and rest ~= "" then
-		SetDirectTarget("verdantEmbraceTarget", rest, "verdantEmbrace", "Verdant Embrace")
-		return
-	end
-
 	if command == "clear" and rest ~= "" then
 		local key = rest:upper()
 		if IsModifierKey(key) then
@@ -1079,11 +1167,6 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 
 	if command == "deletemacros" then
 		DeleteManagedMacros()
-		return
-	end
-
-	if command == "cleanuptargets" then
-		CleanupStoredTargets()
 		return
 	end
 
