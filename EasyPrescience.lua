@@ -11,7 +11,9 @@ local SPATIAL_PARADOX_SPELL_NAME = "Spatial Paradox"
 local TIME_SPIRAL_SPELL_NAME = "Time Spiral"
 local VERDANT_EMBRACE_SPELL_NAME = "Verdant Embrace"
 local MODIFIER_KEYS = { "SHIFT", "ALT", "CTRL" }
+local PRESCIENCE_ASSIGNMENT_KEYS = { "NOMOD", "SHIFT", "ALT", "CTRL" }
 local DISPLAY_KEYS = {
+	NOMOD = "No Mod",
 	SHIFT = "Shift",
 	ALT = "Alt",
 	CTRL = "Ctrl",
@@ -109,6 +111,10 @@ local function IsModifierKey(value)
 	return value == "SHIFT" or value == "ALT" or value == "CTRL"
 end
 
+local function IsPrescienceAssignmentKey(value)
+	return value == "NOMOD" or IsModifierKey(value)
+end
+
 local function FullUnitName(unit)
 	if not unit or not UnitExists(unit) then return nil end
 	return NormalizeName(GetUnitName(unit, true))
@@ -182,7 +188,7 @@ local function EnsureTargetsTable()
 		EasyPrescienceDB.targets = {}
 	end
 
-	for _, key in ipairs(MODIFIER_KEYS) do
+	for _, key in ipairs(PRESCIENCE_ASSIGNMENT_KEYS) do
 		EasyPrescienceDB.targets[key] = NormalizeStoredAssignment(EasyPrescienceDB.targets[key])
 	end
 end
@@ -279,7 +285,7 @@ local function MigrateLegacyData()
 	EnsureTargetsTable()
 
 	if legacyTargets then
-		for _, key in ipairs(MODIFIER_KEYS) do
+		for _, key in ipairs(PRESCIENCE_ASSIGNMENT_KEYS) do
 			if not EasyPrescienceDB.targets[key] then
 				EasyPrescienceDB.targets[key] = NormalizeStoredAssignment(legacyTargets[key]) or ResolveAssignmentDataByName(legacyTargets[key])
 			end
@@ -322,6 +328,7 @@ local function EnsureDB()
 	EasyPrescienceDB.rescueTarget = NormalizeStoredAssignment(EasyPrescienceDB.rescueTarget)
 	EasyPrescienceDB.spatialParadoxTarget = NormalizeStoredAssignment(EasyPrescienceDB.spatialParadoxTarget)
 	EasyPrescienceDB.verdantEmbraceTarget = NormalizeStoredAssignment(EasyPrescienceDB.verdantEmbraceTarget)
+	EasyPrescienceDB.prescienceNoModEnabled = EasyPrescienceDB.prescienceNoModEnabled == true
 	EasyPrescienceDB.blisteringScalesModifier = IsModifierKey(EasyPrescienceDB.blisteringScalesModifier) and EasyPrescienceDB.blisteringScalesModifier or "ALT"
 	EasyPrescienceDB.rescueModifier = IsModifierKey(EasyPrescienceDB.rescueModifier) and EasyPrescienceDB.rescueModifier or "ALT"
 	EasyPrescienceDB.spatialParadoxModifier = IsModifierKey(EasyPrescienceDB.spatialParadoxModifier) and EasyPrescienceDB.spatialParadoxModifier or "ALT"
@@ -336,6 +343,13 @@ end
 
 local function BuildPrescienceMacroBody()
 	local conditions = {}
+
+	if EasyPrescienceDB.prescienceNoModEnabled then
+		local noModUnit = GetAssignmentUnit(EasyPrescienceDB.targets.NOMOD)
+		if noModUnit then
+			conditions[#conditions + 1] = "[nomod,@" .. noModUnit .. ",help,nodead]"
+		end
+	end
 
 	for _, key in ipairs(MODIFIER_KEYS) do
 		local unitToken = GetAssignmentUnit(EasyPrescienceDB.targets[key])
@@ -589,7 +603,7 @@ end
 
 local function SetModifierTarget(modifierKey, assignment, silent)
 	modifierKey = type(modifierKey) == "string" and modifierKey:upper() or nil
-	if not IsModifierKey(modifierKey) then return end
+	if not IsPrescienceAssignmentKey(modifierKey) then return end
 
 	EnsureDB()
 	EasyPrescienceDB.targets[modifierKey] = NormalizeStoredAssignment(assignment)
@@ -644,6 +658,21 @@ local function SetMacroName(field, value, macroID, silent)
 	end
 end
 
+local function SetPrescienceNoModEnabled(enabled, silent)
+	EnsureDB()
+	EasyPrescienceDB.prescienceNoModEnabled = enabled == true
+	ReconcileManagedMacros(true)
+	RefreshOptions()
+
+	if not silent then
+		if EasyPrescienceDB.prescienceNoModEnabled then
+			Msg("Prescience No Mod target enabled.")
+		else
+			Msg("Prescience No Mod target disabled.")
+		end
+	end
+end
+
 local function UpdateAssignmentForRoster(assignment, label, silent)
 	assignment = NormalizeStoredAssignment(assignment)
 	if not assignment then
@@ -683,7 +712,7 @@ local function SyncAssignmentsToRoster(silent)
 
 	local changed = false
 
-	for _, key in ipairs(MODIFIER_KEYS) do
+	for _, key in ipairs(PRESCIENCE_ASSIGNMENT_KEYS) do
 		local updated, didChange = UpdateAssignmentForRoster(EasyPrescienceDB.targets[key], "Prescience " .. DISPLAY_KEYS[key], silent)
 		EasyPrescienceDB.targets[key] = updated
 		changed = changed or didChange
@@ -756,6 +785,12 @@ local function InjectMenu(ownerRegion, rootDescription, contextData)
 
 	rootDescription:CreateDivider()
 	rootDescription:CreateTitle("EasyPrescience")
+
+	if EasyPrescienceDB.prescienceNoModEnabled then
+		rootDescription:CreateButton("Set on No Mod", function()
+			SetModifierTarget("NOMOD", assignment)
+		end)
+	end
 
 	for _, key in ipairs(MODIFIER_KEYS) do
 		local modifierKey = key
@@ -891,6 +926,30 @@ local function CreateModifierRow(parent, y, labelText, getValue, setValue)
 	return y - 34
 end
 
+local function CreateCheckboxRow(parent, y, labelText, getValue, setValue, helpText)
+	local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+	check:SetPoint("TOPLEFT", 12, y + 4)
+	check.text:SetText(labelText)
+
+	if helpText then
+		local helpLabel = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+		helpLabel:SetPoint("TOPLEFT", check, "BOTTOMLEFT", 4, -2)
+		helpLabel:SetWidth(620)
+		helpLabel:SetJustifyH("LEFT")
+		helpLabel:SetText(helpText)
+	end
+
+	check:SetScript("OnClick", function(self)
+		setValue(self:GetChecked() == true)
+	end)
+
+	optionsRefreshers[#optionsRefreshers + 1] = function()
+		check:SetChecked(getValue() == true)
+	end
+
+	return y - (helpText and 44 or 30)
+end
+
 local function RegisterOptionsPanel()
 	if optionsPanel then return end
 
@@ -952,6 +1011,16 @@ local function RegisterOptionsPanel()
 		SetMacroName("verdantEmbraceMacroName", value, "verdantEmbrace")
 	end, DEFAULT_VERDANT_EMBRACE_MACRO_NAME)
 
+	y = y - 8
+	CreateLabel(content, "Prescience", 16, y)
+	y = y - 26
+
+	y = CreateCheckboxRow(content, y, "Enable assigned No Mod target", function()
+		return EasyPrescienceDB.prescienceNoModEnabled
+	end, function(value)
+		SetPrescienceNoModEnabled(value)
+	end, "When enabled, Prescience with no modifier casts on the player assigned with 'Set on No Mod'. When disabled, no modifier keeps the normal spell behavior.")
+
 	y = y - 14
 	CreateLabel(content, "Support Spell Modifiers", 16, y)
 	y = y - 26
@@ -985,6 +1054,7 @@ local function RegisterOptionsPanel()
 
 	optionsRefreshers[#optionsRefreshers + 1] = function()
 		assignmentsLabel:SetText(table.concat({
+			"Prescience No Mod: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.NOMOD),
 			"Prescience Shift: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.SHIFT),
 			"Prescience Alt: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.ALT),
 			"Prescience Ctrl: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.CTRL),
@@ -995,7 +1065,7 @@ local function RegisterOptionsPanel()
 		}, "\n"))
 	end
 
-	y = y - 126
+	y = y - 144
 	CreateLabel(content, "Actions", 16, y)
 	y = y - 28
 
@@ -1056,6 +1126,8 @@ local function HandleSlashStatus()
 	for _, spec in ipairs(GetManagedMacros()) do
 		Msg(spec.label .. " macro =", EasyPrescienceDB[spec.macroField])
 	end
+	Msg("Prescience No Mod target =", GetAssignmentDisplayValue(EasyPrescienceDB.targets.NOMOD))
+	Msg("Prescience No Mod enabled =", EasyPrescienceDB.prescienceNoModEnabled and "Yes" or "No")
 	for _, key in ipairs(MODIFIER_KEYS) do
 		Msg("Prescience " .. DISPLAY_KEYS[key] .. " =", GetAssignmentDisplayValue(EasyPrescienceDB.targets[key]))
 	end
@@ -1136,6 +1208,10 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 
 	if command == "clear" and rest ~= "" then
 		local key = rest:upper()
+		if key == "NOMOD" then
+			SetModifierTarget("NOMOD", nil)
+			return
+		end
 		if IsModifierKey(key) then
 			SetModifierTarget(key, nil)
 			return
@@ -1156,7 +1232,7 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 			SetDirectTarget("verdantEmbraceTarget", nil, "verdantEmbrace", "Verdant Embrace")
 			return
 		end
-		Err("Invalid clear target. Use: shift, alt, ctrl, blistering, rescue, spatial, or verdant.")
+		Err("Invalid clear target. Use: nomod, shift, alt, ctrl, blistering, rescue, spatial, or verdant.")
 		return
 	end
 
