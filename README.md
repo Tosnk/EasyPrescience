@@ -7,7 +7,7 @@ It is useful for **any Evoker spec**, not only Augmentation, because it also cov
 ## Features
 
 - Assign targets from the Blizzard unit context menu
-- Prescience supports **Shift**, **Alt**, and **Ctrl**
+- Prescience supports **Shift**, **Alt**, and **Ctrl**, plus an optional **No Mod** assigned target
 - Rescue, Spatial Paradox / Time Spiral, and Verdant Embrace use configurable modifier keys
 - Blistering Scales uses its own dedicated assigned target
 - Managed macros are created, repaired, and refreshed automatically
@@ -20,7 +20,7 @@ It is useful for **any Evoker spec**, not only Augmentation, because it also cov
 
 - `/ep` shows current status
 - `/ep update` reviews and rebuilds all managed macros
-- `/ep clear <shift|alt|ctrl|blistering|rescue|spatial|verdant>` clears one assignment
+- `/ep clear <nomod|shift|alt|ctrl|blistering|rescue|spatial|verdant>` clears one assignment
 - `/ep macro <name>`
 - `/ep blisteringmacro <name>`
 - `/ep rescuemacro <name>`
@@ -32,3 +32,4 @@ It is useful for **any Evoker spec**, not only Augmentation, because it also cov
 
 - Macro creation and editing are blocked in combat
 - Spatial Paradox automatically swaps to Time Spiral when that talent is selected
+- The addon tracks assigned players across party and raid slot changes automatically

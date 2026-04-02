@@ -1,8 +1,8 @@
-## Interface: 120000
+## Interface: 120005
 ## Title: EasyPrescience
 ## Notes: Manage Prescience and support macros from unit menus with automatic review and Blizzard Settings options
 ## Author: Dydko-Draenor (Discord: Nkvri#2705)
-## Version: 2.1.0
+## Version: 2.1.1
 ## SavedVariables: EasyPrescienceDB
 
 EasyPrescience.lua
