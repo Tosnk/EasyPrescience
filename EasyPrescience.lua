@@ -183,6 +183,11 @@ local function GetAssignmentDisplayValue(value)
 	return (assignment.name or unitToken) .. " (" .. unitToken .. ")"
 end
 
+local function GetStatusValue(value)
+	value = Trim(value)
+	return value or "Not set"
+end
+
 local function EnsureTargetsTable()
 	if type(EasyPrescienceDB.targets) ~= "table" then
 		EasyPrescienceDB.targets = {}
@@ -1122,22 +1127,36 @@ end
 
 local function HandleSlashStatus()
 	EnsureDB()
-	Msg("Options are available in Blizzard Settings -> AddOns -> " .. ADDON)
-	for _, spec in ipairs(GetManagedMacros()) do
-		Msg(spec.label .. " macro =", EasyPrescienceDB[spec.macroField])
-	end
-	Msg("Prescience No Mod target =", GetAssignmentDisplayValue(EasyPrescienceDB.targets.NOMOD))
-	Msg("Prescience No Mod enabled =", EasyPrescienceDB.prescienceNoModEnabled and "Yes" or "No")
-	for _, key in ipairs(MODIFIER_KEYS) do
-		Msg("Prescience " .. DISPLAY_KEYS[key] .. " =", GetAssignmentDisplayValue(EasyPrescienceDB.targets[key]))
-	end
-	Msg("Blistering Scales =", GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget))
-	Msg("Rescue =", GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget))
-	Msg("Rescue modifier =", DISPLAY_KEYS[EasyPrescienceDB.rescueModifier])
-	Msg("Spatial Paradox =", GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget))
-	Msg("Spatial Paradox modifier =", DISPLAY_KEYS[EasyPrescienceDB.spatialParadoxModifier])
-	Msg("Verdant Embrace =", GetAssignmentDisplayValue(EasyPrescienceDB.verdantEmbraceTarget))
-	Msg("Verdant Embrace modifier =", DISPLAY_KEYS[EasyPrescienceDB.verdantEmbraceModifier])
+	Msg("Options: Blizzard Settings -> AddOns -> " .. ADDON)
+	Msg(
+		"Macros: Prescience=" .. GetStatusValue(EasyPrescienceDB.macroName)
+			.. ", Blistering=" .. GetStatusValue(EasyPrescienceDB.blisteringScalesMacroName)
+			.. ", Rescue=" .. GetStatusValue(EasyPrescienceDB.rescueMacroName)
+	)
+	Msg(
+		"Macros: Spatial=" .. GetStatusValue(EasyPrescienceDB.spatialParadoxMacroName)
+			.. ", Verdant=" .. GetStatusValue(EasyPrescienceDB.verdantEmbraceMacroName)
+	)
+	Msg(
+		"Prescience: No Mod=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.NOMOD))
+			.. " (" .. (EasyPrescienceDB.prescienceNoModEnabled and "enabled" or "disabled") .. ")"
+	)
+	Msg(
+		"Prescience: Shift=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.SHIFT))
+			.. ", Alt=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.ALT))
+			.. ", Ctrl=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.CTRL))
+	)
+	Msg(
+		"Utility: Blistering=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget))
+			.. ", Rescue=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget))
+			.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.rescueModifier] .. "]"
+	)
+	Msg(
+		"Utility: Spatial=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget))
+			.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.spatialParadoxModifier] .. "]"
+			.. ", Verdant=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.verdantEmbraceTarget))
+			.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.verdantEmbraceModifier] .. "]"
+	)
 end
 
 local frame = CreateFrame("Frame")
