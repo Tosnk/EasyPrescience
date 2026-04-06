@@ -2,7 +2,7 @@
 ## Title: EasyPrescience
 ## Notes: Manage Prescience and support macros from unit menus with automatic review and Blizzard Settings options
 ## Author: Dydko-Draenor
-## Version: 2.2
+## Version: 2.2.1
 ## IconTexture: Interface\AddOns\EasyPrescience\icon.png
 ## SavedVariables: EasyPrescienceDB
 

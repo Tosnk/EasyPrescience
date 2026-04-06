@@ -1153,6 +1153,7 @@ end
 local function InjectMenu(ownerRegion, rootDescription, contextData)
 	local assignment = ResolveAssignmentUnit(ownerRegion, contextData)
 	if not assignment then return end
+	local isSelfAssignment = GetAssignmentUnit(assignment) == "player"
 
 	rootDescription:CreateDivider()
 	rootDescription:CreateTitle("EasyPrescience")
@@ -1170,21 +1171,23 @@ local function InjectMenu(ownerRegion, rootDescription, contextData)
 		end)
 	end
 
-	rootDescription:CreateButton("Set Blistering Scales", function()
-		SetDirectTarget("blisteringScalesTarget", assignment, "blistering", "Blistering Scales")
-	end)
+	if not isSelfAssignment then
+		rootDescription:CreateButton("Set Blistering Scales", function()
+			SetDirectTarget("blisteringScalesTarget", assignment, "blistering", "Blistering Scales")
+		end)
 
-	rootDescription:CreateButton("Set Rescue", function()
-		SetDirectTarget("rescueTarget", assignment, "rescue", "Rescue")
-	end)
+		rootDescription:CreateButton("Set Rescue", function()
+			SetDirectTarget("rescueTarget", assignment, "rescue", "Rescue")
+		end)
 
-	rootDescription:CreateButton("Set Spatial Paradox", function()
-		SetDirectTarget("spatialParadoxTarget", assignment, "spatialParadox", "Spatial Paradox")
-	end)
+		rootDescription:CreateButton("Set Spatial Paradox", function()
+			SetDirectTarget("spatialParadoxTarget", assignment, "spatialParadox", "Spatial Paradox")
+		end)
 
-	rootDescription:CreateButton("Set Verdant Embrace", function()
-		SetDirectTarget("verdantEmbraceTarget", assignment, "verdantEmbrace", "Verdant Embrace")
-	end)
+		rootDescription:CreateButton("Set Verdant Embrace", function()
+			SetDirectTarget("verdantEmbraceTarget", assignment, "verdantEmbrace", "Verdant Embrace")
+		end)
+	end
 end
 
 local function TryHookMenu(key)

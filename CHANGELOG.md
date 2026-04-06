@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.1
+
+- Hid self-only utility assignment options from your own player and nameplate context menus for better consistency
+- Improved CurseForge packaging configuration to use the manual changelog
+
 ## 2.2
 
 - Added automatic assignment support for party and raid play, with separate toggles for supported spells
