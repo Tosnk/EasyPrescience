@@ -4,9 +4,11 @@ local ADDON = "EasyPrescience"
 local MAX_MACRO_NAME_LENGTH = 16
 local DEFAULT_MACRO_NAME = "PrescienceName"
 local DEFAULT_BLISTERING_SCALES_MACRO_NAME = "BlisteringScales"
+local DEFAULT_SOURCE_OF_MAGIC_MACRO_NAME = "SourceOfMagic"
 local DEFAULT_RESCUE_MACRO_NAME = "RescueTarget"
 local DEFAULT_SPATIAL_PARADOX_MACRO_NAME = "SpatialParadox"
 local DEFAULT_VERDANT_EMBRACE_MACRO_NAME = "VerdantEmbrace"
+local SOURCE_OF_MAGIC_SPELL_NAME = "Source of Magic"
 local SPATIAL_PARADOX_SPELL_NAME = "Spatial Paradox"
 local TIME_SPIRAL_SPELL_NAME = "Time Spiral"
 local VERDANT_EMBRACE_SPELL_NAME = "Verdant Embrace"
@@ -40,6 +42,7 @@ local HOOK_MENU_KEYS = {
 local MACRO_DEFAULTS = {
 	macroName = DEFAULT_MACRO_NAME,
 	blisteringScalesMacroName = DEFAULT_BLISTERING_SCALES_MACRO_NAME,
+	sourceOfMagicMacroName = DEFAULT_SOURCE_OF_MAGIC_MACRO_NAME,
 	rescueMacroName = DEFAULT_RESCUE_MACRO_NAME,
 	spatialParadoxMacroName = DEFAULT_SPATIAL_PARADOX_MACRO_NAME,
 	verdantEmbraceMacroName = DEFAULT_VERDANT_EMBRACE_MACRO_NAME,
@@ -65,15 +68,15 @@ local function GetNonPrescienceModifierOptions()
 	}
 end
 
-local function GetSpatialParadoxPreferredClassOptions()
+local function GetHealerPreferredClassOptions()
 	return {
+		{ value = "ANY", label = "Any healer" },
 		{ value = "PRIEST", label = "Priest" },
 		{ value = "PALADIN", label = "Paladin" },
 		{ value = "DRUID", label = "Druid" },
 		{ value = "SHAMAN", label = "Shaman" },
 		{ value = "MONK", label = "Monk" },
 		{ value = "EVOKER", label = "Evoker" },
-		{ value = "ANY", label = "Any healer" },
 	}
 end
 
@@ -207,7 +210,7 @@ local function GetStatusValue(value)
 end
 
 local function GetClassDisplayName(classToken)
-	for _, option in ipairs(GetSpatialParadoxPreferredClassOptions()) do
+	for _, option in ipairs(GetHealerPreferredClassOptions()) do
 		if option.value == classToken then
 			return option.label
 		end
@@ -311,7 +314,7 @@ local function ResolveAssignmentDataByName(fullName)
 end
 
 local function MigrateLegacyData()
-	if EasyPrescienceDB.schemaVersion == 8 then return end
+	if EasyPrescienceDB.schemaVersion == 9 then return end
 
 	local legacyTargets = type(EasyPrescienceDB.targets) == "table" and EasyPrescienceDB.targets or nil
 	EnsureTargetsTable()
@@ -338,6 +341,7 @@ local function MigrateLegacyData()
 	EasyPrescienceDB.modKey = nil
 	EasyPrescienceDB.invert = nil
 	EasyPrescienceDB.blisteringScalesTarget = NormalizeStoredAssignment(EasyPrescienceDB.blisteringScalesTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.blisteringScalesTarget)
+	EasyPrescienceDB.sourceOfMagicTarget = NormalizeStoredAssignment(EasyPrescienceDB.sourceOfMagicTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.sourceOfMagicTarget)
 	EasyPrescienceDB.rescueTarget = NormalizeStoredAssignment(EasyPrescienceDB.rescueTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.rescueTarget)
 	EasyPrescienceDB.spatialParadoxTarget = NormalizeStoredAssignment(EasyPrescienceDB.spatialParadoxTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.spatialParadoxTarget)
 	EasyPrescienceDB.verdantEmbraceTarget = NormalizeStoredAssignment(EasyPrescienceDB.verdantEmbraceTarget) or ResolveAssignmentDataByName(EasyPrescienceDB.verdantEmbraceTarget)
@@ -345,18 +349,20 @@ local function MigrateLegacyData()
 	EasyPrescienceDB.rescueModifier = IsModifierKey(EasyPrescienceDB.rescueModifier) and EasyPrescienceDB.rescueModifier or "ALT"
 	EasyPrescienceDB.spatialParadoxModifier = IsModifierKey(EasyPrescienceDB.spatialParadoxModifier) and EasyPrescienceDB.spatialParadoxModifier or "ALT"
 	EasyPrescienceDB.verdantEmbraceModifier = IsModifierKey(EasyPrescienceDB.verdantEmbraceModifier) and EasyPrescienceDB.verdantEmbraceModifier or "ALT"
-	EasyPrescienceDB.schemaVersion = 8
+	EasyPrescienceDB.schemaVersion = 9
 end
 
 local function EnsureDB()
 	EasyPrescienceDB.macroName = NormalizeMacroName(EasyPrescienceDB.macroName, DEFAULT_MACRO_NAME)
 	EasyPrescienceDB.blisteringScalesMacroName = NormalizeMacroName(EasyPrescienceDB.blisteringScalesMacroName, DEFAULT_BLISTERING_SCALES_MACRO_NAME)
+	EasyPrescienceDB.sourceOfMagicMacroName = NormalizeMacroName(EasyPrescienceDB.sourceOfMagicMacroName, DEFAULT_SOURCE_OF_MAGIC_MACRO_NAME)
 	EasyPrescienceDB.rescueMacroName = NormalizeMacroName(EasyPrescienceDB.rescueMacroName, DEFAULT_RESCUE_MACRO_NAME)
 	EasyPrescienceDB.spatialParadoxMacroName = NormalizeMacroName(EasyPrescienceDB.spatialParadoxMacroName, DEFAULT_SPATIAL_PARADOX_MACRO_NAME)
 	EasyPrescienceDB.verdantEmbraceMacroName = NormalizeMacroName(EasyPrescienceDB.verdantEmbraceMacroName, DEFAULT_VERDANT_EMBRACE_MACRO_NAME)
 	MigrateLegacyData()
 	EnsureTargetsTable()
 	EasyPrescienceDB.blisteringScalesTarget = NormalizeStoredAssignment(EasyPrescienceDB.blisteringScalesTarget)
+	EasyPrescienceDB.sourceOfMagicTarget = NormalizeStoredAssignment(EasyPrescienceDB.sourceOfMagicTarget)
 	EasyPrescienceDB.rescueTarget = NormalizeStoredAssignment(EasyPrescienceDB.rescueTarget)
 	EasyPrescienceDB.spatialParadoxTarget = NormalizeStoredAssignment(EasyPrescienceDB.spatialParadoxTarget)
 	EasyPrescienceDB.verdantEmbraceTarget = NormalizeStoredAssignment(EasyPrescienceDB.verdantEmbraceTarget)
@@ -368,11 +374,14 @@ local function EnsureDB()
 	EasyPrescienceDB.useAutoAssign = EasyPrescienceDB.useAutoAssign == true
 	EasyPrescienceDB.autoAssignPrescience = EasyPrescienceDB.autoAssignPrescience ~= false
 	EasyPrescienceDB.autoAssignBlisteringScales = EasyPrescienceDB.autoAssignBlisteringScales ~= false
+	EasyPrescienceDB.autoAssignSourceOfMagic = EasyPrescienceDB.autoAssignSourceOfMagic ~= false
 	EasyPrescienceDB.autoAssignRescue = EasyPrescienceDB.autoAssignRescue ~= false
 	EasyPrescienceDB.autoAssignSpatialParadox = EasyPrescienceDB.autoAssignSpatialParadox ~= false
 	EasyPrescienceDB.announceSelectionsInChat = EasyPrescienceDB.announceSelectionsInChat == true
-	local preferredClass = type(EasyPrescienceDB.spatialParadoxPreferredClass) == "string" and EasyPrescienceDB.spatialParadoxPreferredClass:upper() or "PRIEST"
+	local preferredClass = type(EasyPrescienceDB.spatialParadoxPreferredClass) == "string" and EasyPrescienceDB.spatialParadoxPreferredClass:upper() or "ANY"
 	EasyPrescienceDB.spatialParadoxPreferredClass = preferredClass
+	local sourcePreferredClass = type(EasyPrescienceDB.sourceOfMagicPreferredClass) == "string" and EasyPrescienceDB.sourceOfMagicPreferredClass:upper() or "ANY"
+	EasyPrescienceDB.sourceOfMagicPreferredClass = sourcePreferredClass
 	if type(EasyPrescienceDB.minimap) ~= "table" then
 		EasyPrescienceDB.minimap = {}
 	end
@@ -484,6 +493,10 @@ local function BuildBlisteringScalesMacroBody()
 	return BuildDirectTargetMacroBody("Blistering Scales", EasyPrescienceDB.blisteringScalesTarget)
 end
 
+local function BuildSourceOfMagicMacroBody()
+	return BuildDirectTargetMacroBody(SOURCE_OF_MAGIC_SPELL_NAME, EasyPrescienceDB.sourceOfMagicTarget)
+end
+
 local function BuildRescueMacroBody()
 	return BuildSingleModifierTargetMacroBody("Rescue", EasyPrescienceDB.rescueModifier, EasyPrescienceDB.rescueTarget)
 end
@@ -527,6 +540,13 @@ local function GetManagedMacros()
 			macroField = "blisteringScalesMacroName",
 			defaultMacroName = DEFAULT_BLISTERING_SCALES_MACRO_NAME,
 			buildBody = BuildBlisteringScalesMacroBody,
+		},
+		{
+			id = "sourceOfMagic",
+			label = "Source of Magic",
+			macroField = "sourceOfMagicMacroName",
+			defaultMacroName = DEFAULT_SOURCE_OF_MAGIC_MACRO_NAME,
+			buildBody = BuildSourceOfMagicMacroBody,
 		},
 		{
 			id = "rescue",
@@ -651,7 +671,7 @@ local function ClearAllAssignments(silent)
 		EasyPrescienceDB.targets[key] = nil
 	end
 
-	for _, field in ipairs({ "blisteringScalesTarget", "rescueTarget", "spatialParadoxTarget", "verdantEmbraceTarget" }) do
+	for _, field in ipairs({ "blisteringScalesTarget", "sourceOfMagicTarget", "rescueTarget", "spatialParadoxTarget", "verdantEmbraceTarget" }) do
 		EasyPrescienceDB[field] = nil
 	end
 
@@ -759,6 +779,7 @@ local function SetAutoAssignUtilityEnabled(field, enabled, silent)
 	local labels = {
 		autoAssignPrescience = "Prescience",
 		autoAssignBlisteringScales = "Blistering Scales",
+		autoAssignSourceOfMagic = "Source of Magic",
 		autoAssignRescue = "Rescue",
 		autoAssignSpatialParadox = "Spatial Paradox",
 	}
@@ -786,7 +807,7 @@ local function SetAnnounceSelectionsInChat(enabled, silent)
 end
 
 local function SetSpatialParadoxPreferredClass(value, silent)
-	value = type(value) == "string" and value:upper() or "PRIEST"
+	value = type(value) == "string" and value:upper() or "ANY"
 	EnsureDB()
 	EasyPrescienceDB.spatialParadoxPreferredClass = value
 	if EasyPrescienceDB.useAutoAssign and EasyPrescienceDB.autoAssignSpatialParadox then
@@ -797,6 +818,21 @@ local function SetSpatialParadoxPreferredClass(value, silent)
 
 	if not silent then
 		Msg("Spatial Paradox preferred class =", GetClassDisplayName(value))
+	end
+end
+
+local function SetSourceOfMagicPreferredClass(value, silent)
+	value = type(value) == "string" and value:upper() or "ANY"
+	EnsureDB()
+	EasyPrescienceDB.sourceOfMagicPreferredClass = value
+	if EasyPrescienceDB.useAutoAssign and EasyPrescienceDB.autoAssignSourceOfMagic then
+		ApplyAutoAssignments()
+	else
+		RefreshOptions()
+	end
+
+	if not silent then
+		Msg("Source of Magic preferred class =", GetClassDisplayName(value))
 	end
 end
 
@@ -857,6 +893,7 @@ local function SyncAssignmentsToRoster(silent)
 
 	local fieldSpecs = {
 		{ field = "blisteringScalesTarget", label = "Blistering Scales" },
+		{ field = "sourceOfMagicTarget", label = "Source of Magic" },
 		{ field = "rescueTarget", label = "Rescue" },
 		{ field = "spatialParadoxTarget", label = "Spatial Paradox / Time Spiral" },
 		{ field = "verdantEmbraceTarget", label = "Verdant Embrace" },
@@ -1008,6 +1045,10 @@ local function BuildAutoAssignSummary()
 		summary[#summary + 1] = "Blistering Scales: " .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget))
 	end
 
+	if EasyPrescienceDB.autoAssignSourceOfMagic then
+		summary[#summary + 1] = "Source of Magic: " .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.sourceOfMagicTarget))
+	end
+
 	if EasyPrescienceDB.autoAssignRescue then
 		summary[#summary + 1] = "Rescue: " .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget))
 	end
@@ -1070,6 +1111,11 @@ ApplyAutoAssignments = function(suppressMessages)
 			SetAutoField("blisteringScalesTarget", BuildAssignmentData(tankUnit), "Blistering Scales", "blistering")
 		end
 
+		if EasyPrescienceDB.autoAssignSourceOfMagic then
+			local healerUnit = FindHealerUnit(EasyPrescienceDB.sourceOfMagicPreferredClass)
+			SetAutoField("sourceOfMagicTarget", BuildAssignmentData(healerUnit), "Source of Magic", "sourceOfMagic")
+		end
+
 		if EasyPrescienceDB.autoAssignSpatialParadox then
 			local healerUnit = FindHealerUnit(EasyPrescienceDB.spatialParadoxPreferredClass)
 			SetAutoField("spatialParadoxTarget", BuildAssignmentData(healerUnit), "Spatial Paradox", "spatialParadox")
@@ -1077,6 +1123,11 @@ ApplyAutoAssignments = function(suppressMessages)
 	elseif IsInGroup() then
 		if EasyPrescienceDB.autoAssignBlisteringScales then
 			SetAutoField("blisteringScalesTarget", BuildAssignmentData(FindFirstTankUnit()), "Blistering Scales", "blistering")
+		end
+
+		if EasyPrescienceDB.autoAssignSourceOfMagic then
+			local healerUnit = FindHealerUnit(EasyPrescienceDB.sourceOfMagicPreferredClass)
+			SetAutoField("sourceOfMagicTarget", BuildAssignmentData(healerUnit), "Source of Magic", "sourceOfMagic")
 		end
 
 		if EasyPrescienceDB.autoAssignRescue then
@@ -1182,6 +1233,10 @@ local function InjectMenu(ownerRegion, rootDescription, contextData)
 
 		rootDescription:CreateButton("Set Spatial Paradox", function()
 			SetDirectTarget("spatialParadoxTarget", assignment, "spatialParadox", "Spatial Paradox")
+		end)
+
+		rootDescription:CreateButton("Set Source of Magic", function()
+			SetDirectTarget("sourceOfMagicTarget", assignment, "sourceOfMagic", "Source of Magic")
 		end)
 
 		rootDescription:CreateButton("Set Verdant Embrace", function()
@@ -1523,6 +1578,12 @@ RegisterOptionsPanel = function()
 		SetMacroName("blisteringScalesMacroName", value, "blistering")
 	end, DEFAULT_BLISTERING_SCALES_MACRO_NAME)
 
+	y = CreateMacroRow(content, y, "Source of Magic", function()
+		return EasyPrescienceDB.sourceOfMagicMacroName
+	end, function(value)
+		SetMacroName("sourceOfMagicMacroName", value, "sourceOfMagic")
+	end, DEFAULT_SOURCE_OF_MAGIC_MACRO_NAME)
+
 	y = CreateMacroRow(content, y, "Rescue", function()
 		return EasyPrescienceDB.rescueMacroName
 	end, function(value)
@@ -1579,6 +1640,12 @@ RegisterOptionsPanel = function()
 		SetAutoAssignUtilityEnabled("autoAssignBlisteringScales", value)
 	end, "In parties, prefer the tank. In raids, prefer the main tank or the first tank if no main tank is assigned.")
 
+	y = CreateCheckboxRow(content, y, "Auto-assign Source of Magic", function()
+		return EasyPrescienceDB.autoAssignSourceOfMagic
+	end, function(value)
+		SetAutoAssignUtilityEnabled("autoAssignSourceOfMagic", value)
+	end, "In parties and raids, assign Source of Magic to a healer and prefer the selected class when available.")
+
 	y = CreateCheckboxRow(content, y, "Auto-assign Rescue", function()
 		return EasyPrescienceDB.autoAssignRescue
 	end, function(value)
@@ -1592,7 +1659,14 @@ RegisterOptionsPanel = function()
 	end, "In raids, assign Spatial Paradox to a healer and prefer the selected class when available.")
 
 	y = y - 10
-	y = CreateChoiceRow(content, y, "Preferred Spatial Paradox class", 160, GetSpatialParadoxPreferredClassOptions(), function()
+	y = CreateChoiceRow(content, y, "Preferred Source of Magic class", 160, GetHealerPreferredClassOptions(), function()
+		return EasyPrescienceDB.sourceOfMagicPreferredClass
+	end, function(value)
+		SetSourceOfMagicPreferredClass(value)
+	end)
+
+	y = y - 10
+	y = CreateChoiceRow(content, y, "Preferred Spatial Paradox class", 160, GetHealerPreferredClassOptions(), function()
 		return EasyPrescienceDB.spatialParadoxPreferredClass
 	end, function(value)
 		SetSpatialParadoxPreferredClass(value)
@@ -1690,9 +1764,11 @@ HandleSlashStatus = function()
 	Msg("Options: Blizzard Settings -> AddOns -> " .. ADDON)
 	Msg("Auto assign: " .. (EasyPrescienceDB.useAutoAssign and "On" or "Off")
 		.. " | Chat selections: " .. (EasyPrescienceDB.announceSelectionsInChat and "On" or "Off")
+		.. " | Source pref: " .. GetClassDisplayName(EasyPrescienceDB.sourceOfMagicPreferredClass)
 		.. " | Spatial pref: " .. GetClassDisplayName(EasyPrescienceDB.spatialParadoxPreferredClass))
 	Msg("Macros: Prescience=" .. GetStatusValue(EasyPrescienceDB.macroName)
 		.. ", Blistering=" .. GetStatusValue(EasyPrescienceDB.blisteringScalesMacroName)
+		.. ", Source=" .. GetStatusValue(EasyPrescienceDB.sourceOfMagicMacroName)
 		.. ", Rescue=" .. GetStatusValue(EasyPrescienceDB.rescueMacroName)
 		.. ", Spatial=" .. GetStatusValue(EasyPrescienceDB.spatialParadoxMacroName)
 		.. ", Verdant=" .. GetStatusValue(EasyPrescienceDB.verdantEmbraceMacroName))
@@ -1707,6 +1783,7 @@ HandleSlashStatus = function()
 	prescienceSummary[#prescienceSummary + 1] = "Ctrl=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.CTRL))
 	Msg("Prescience: " .. table.concat(prescienceSummary, ", "))
 	Msg("Utilities: Blistering=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget))
+		.. ", Source=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.sourceOfMagicTarget))
 		.. ", Rescue=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget))
 		.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.rescueModifier] .. "]"
 		.. ", Spatial=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget))
@@ -1805,6 +1882,11 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 		return
 	end
 
+	if command == "sourcemagicmacro" and rest ~= "" then
+		SetMacroName("sourceOfMagicMacroName", rest, "sourceOfMagic")
+		return
+	end
+
 	if command == "rescuemacro" and rest ~= "" then
 		SetMacroName("rescueMacroName", rest, "rescue")
 		return
@@ -1834,6 +1916,10 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 			SetDirectTarget("blisteringScalesTarget", nil, "blistering", "Blistering Scales")
 			return
 		end
+		if key == "SOURCE" then
+			SetDirectTarget("sourceOfMagicTarget", nil, "sourceOfMagic", "Source of Magic")
+			return
+		end
 		if key == "RESCUE" then
 			SetDirectTarget("rescueTarget", nil, "rescue", "Rescue")
 			return
@@ -1846,7 +1932,7 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 			SetDirectTarget("verdantEmbraceTarget", nil, "verdantEmbrace", "Verdant Embrace")
 			return
 		end
-		Err("Invalid clear target. Use: nomod, shift, alt, ctrl, blistering, rescue, spatial, or verdant.")
+		Err("Invalid clear target. Use: nomod, shift, alt, ctrl, blistering, source, rescue, spatial, or verdant.")
 		return
 	end
 

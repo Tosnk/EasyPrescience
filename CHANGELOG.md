@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3
+
+- Added Source of Magic support with its own target, macro, menu entry, options, and auto-assignment
+- Added Source of Magic healer preference selection for both party and raid auto-assignment
+- Changed Spatial Paradox preferred healer class default to Any healer
+- Hid self-only Verdant Embrace assignment from your own player and nameplate context menus for consistency
+
 ## 2.2.1
 
 - Hid self-only utility assignment options from your own player and nameplate context menus for better consistency
