@@ -1,8 +1,8 @@
 ## Interface: 120001
 ## Title: EasyPrescience
 ## Notes: Manage Prescience and support macros from unit menus with automatic review and Blizzard Settings options
-## Author: Dydko-Draenor (Discord: Nkvri#2705)
-## Version: 2.1.2
+## Author: Dydko-Draenor
+## Version: 2.2
 ## IconTexture: Interface\AddOns\EasyPrescience\icon.png
 ## SavedVariables: EasyPrescienceDB
 

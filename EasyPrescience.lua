@@ -48,14 +48,32 @@ local MACRO_DEFAULTS = {
 local hookedMenus = {}
 local optionsRefreshers = {}
 local optionsPanel
+local optionsCategoryID
 local managedMacros
+local minimapButton
 local RefreshOptions
+local ApplyAutoAssignments
+local OpenSettingsPanel
+local RegisterOptionsPanel
+local HandleSlashStatus
 
 local function GetNonPrescienceModifierOptions()
 	return {
 		{ value = "SHIFT", label = "Shift" },
 		{ value = "ALT", label = "Alt" },
 		{ value = "CTRL", label = "Ctrl" },
+	}
+end
+
+local function GetSpatialParadoxPreferredClassOptions()
+	return {
+		{ value = "PRIEST", label = "Priest" },
+		{ value = "PALADIN", label = "Paladin" },
+		{ value = "DRUID", label = "Druid" },
+		{ value = "SHAMAN", label = "Shaman" },
+		{ value = "MONK", label = "Monk" },
+		{ value = "EVOKER", label = "Evoker" },
+		{ value = "ANY", label = "Any healer" },
 	}
 end
 
@@ -188,6 +206,15 @@ local function GetStatusValue(value)
 	return value or "Not set"
 end
 
+local function GetClassDisplayName(classToken)
+	for _, option in ipairs(GetSpatialParadoxPreferredClassOptions()) do
+		if option.value == classToken then
+			return option.label
+		end
+	end
+	return classToken or "Any healer"
+end
+
 local function EnsureTargetsTable()
 	if type(EasyPrescienceDB.targets) ~= "table" then
 		EasyPrescienceDB.targets = {}
@@ -284,7 +311,7 @@ local function ResolveAssignmentDataByName(fullName)
 end
 
 local function MigrateLegacyData()
-	if EasyPrescienceDB.schemaVersion == 7 then return end
+	if EasyPrescienceDB.schemaVersion == 8 then return end
 
 	local legacyTargets = type(EasyPrescienceDB.targets) == "table" and EasyPrescienceDB.targets or nil
 	EnsureTargetsTable()
@@ -318,7 +345,7 @@ local function MigrateLegacyData()
 	EasyPrescienceDB.rescueModifier = IsModifierKey(EasyPrescienceDB.rescueModifier) and EasyPrescienceDB.rescueModifier or "ALT"
 	EasyPrescienceDB.spatialParadoxModifier = IsModifierKey(EasyPrescienceDB.spatialParadoxModifier) and EasyPrescienceDB.spatialParadoxModifier or "ALT"
 	EasyPrescienceDB.verdantEmbraceModifier = IsModifierKey(EasyPrescienceDB.verdantEmbraceModifier) and EasyPrescienceDB.verdantEmbraceModifier or "ALT"
-	EasyPrescienceDB.schemaVersion = 7
+	EasyPrescienceDB.schemaVersion = 8
 end
 
 local function EnsureDB()
@@ -338,6 +365,23 @@ local function EnsureDB()
 	EasyPrescienceDB.rescueModifier = IsModifierKey(EasyPrescienceDB.rescueModifier) and EasyPrescienceDB.rescueModifier or "ALT"
 	EasyPrescienceDB.spatialParadoxModifier = IsModifierKey(EasyPrescienceDB.spatialParadoxModifier) and EasyPrescienceDB.spatialParadoxModifier or "ALT"
 	EasyPrescienceDB.verdantEmbraceModifier = IsModifierKey(EasyPrescienceDB.verdantEmbraceModifier) and EasyPrescienceDB.verdantEmbraceModifier or "ALT"
+	EasyPrescienceDB.useAutoAssign = EasyPrescienceDB.useAutoAssign == true
+	EasyPrescienceDB.autoAssignPrescience = EasyPrescienceDB.autoAssignPrescience ~= false
+	EasyPrescienceDB.autoAssignBlisteringScales = EasyPrescienceDB.autoAssignBlisteringScales ~= false
+	EasyPrescienceDB.autoAssignRescue = EasyPrescienceDB.autoAssignRescue ~= false
+	EasyPrescienceDB.autoAssignSpatialParadox = EasyPrescienceDB.autoAssignSpatialParadox ~= false
+	EasyPrescienceDB.announceSelectionsInChat = EasyPrescienceDB.announceSelectionsInChat == true
+	local preferredClass = type(EasyPrescienceDB.spatialParadoxPreferredClass) == "string" and EasyPrescienceDB.spatialParadoxPreferredClass:upper() or "PRIEST"
+	EasyPrescienceDB.spatialParadoxPreferredClass = preferredClass
+	if type(EasyPrescienceDB.minimap) ~= "table" then
+		EasyPrescienceDB.minimap = {}
+	end
+	if type(EasyPrescienceDB.minimap.angle) ~= "number" then
+		EasyPrescienceDB.minimap.angle = 225
+	end
+	if EasyPrescienceDB.minimap.hide == nil then
+		EasyPrescienceDB.minimap.hide = false
+	end
 end
 
 local function MacroIndexByName(name)
@@ -600,6 +644,25 @@ local function DeleteManagedMacros()
 	end
 end
 
+local function ClearAllAssignments(silent)
+	EnsureDB()
+
+	for _, key in ipairs(PRESCIENCE_ASSIGNMENT_KEYS) do
+		EasyPrescienceDB.targets[key] = nil
+	end
+
+	for _, field in ipairs({ "blisteringScalesTarget", "rescueTarget", "spatialParadoxTarget", "verdantEmbraceTarget" }) do
+		EasyPrescienceDB[field] = nil
+	end
+
+	ReconcileManagedMacros(true)
+	RefreshOptions()
+
+	if not silent then
+		Msg("All assignments cleared.")
+	end
+end
+
 function RefreshOptions()
 	for _, refresh in ipairs(optionsRefreshers) do
 		refresh()
@@ -678,10 +741,69 @@ local function SetPrescienceNoModEnabled(enabled, silent)
 	end
 end
 
+local function SetAutoAssignEnabled(enabled, silent)
+	EnsureDB()
+	EasyPrescienceDB.useAutoAssign = enabled == true
+	if EasyPrescienceDB.useAutoAssign then
+		ApplyAutoAssignments()
+	else
+		RefreshOptions()
+	end
+
+	if not silent then
+		Msg("Use auto assign " .. (EasyPrescienceDB.useAutoAssign and "enabled." or "disabled."))
+	end
+end
+
+local function SetAutoAssignUtilityEnabled(field, enabled, silent)
+	local labels = {
+		autoAssignPrescience = "Prescience",
+		autoAssignBlisteringScales = "Blistering Scales",
+		autoAssignRescue = "Rescue",
+		autoAssignSpatialParadox = "Spatial Paradox",
+	}
+	EnsureDB()
+	EasyPrescienceDB[field] = enabled == true
+	if EasyPrescienceDB.useAutoAssign and EasyPrescienceDB[field] then
+		ApplyAutoAssignments()
+	else
+		RefreshOptions()
+	end
+
+	if not silent then
+		Msg((labels[field] or field) .. " auto assign " .. (EasyPrescienceDB[field] and "enabled." or "disabled."))
+	end
+end
+
+local function SetAnnounceSelectionsInChat(enabled, silent)
+	EnsureDB()
+	EasyPrescienceDB.announceSelectionsInChat = enabled == true
+	RefreshOptions()
+
+	if not silent then
+		Msg("Chat selection summary " .. (EasyPrescienceDB.announceSelectionsInChat and "enabled." or "disabled."))
+	end
+end
+
+local function SetSpatialParadoxPreferredClass(value, silent)
+	value = type(value) == "string" and value:upper() or "PRIEST"
+	EnsureDB()
+	EasyPrescienceDB.spatialParadoxPreferredClass = value
+	if EasyPrescienceDB.useAutoAssign and EasyPrescienceDB.autoAssignSpatialParadox then
+		ApplyAutoAssignments()
+	else
+		RefreshOptions()
+	end
+
+	if not silent then
+		Msg("Spatial Paradox preferred class =", GetClassDisplayName(value))
+	end
+end
+
 local function UpdateAssignmentForRoster(assignment, label, silent)
 	assignment = NormalizeStoredAssignment(assignment)
 	if not assignment then
-		return nil, false
+		return nil, false, nil
 	end
 
 	local oldUnit = assignment.unit
@@ -695,7 +817,7 @@ local function UpdateAssignmentForRoster(assignment, label, silent)
 		if not silent then
 			Msg(label .. " assignment cleared because that player is no longer in your current party or raid.")
 		end
-		return nil, true
+		return nil, true, "cleared"
 	end
 
 	local updated = BuildAssignmentData(resolvedUnit) or {
@@ -709,18 +831,28 @@ local function UpdateAssignmentForRoster(assignment, label, silent)
 	end
 
 	local changed = oldUnit ~= updated.unit or assignment.guid ~= updated.guid or assignment.name ~= updated.name
-	return updated, changed
+	return updated, changed, oldUnit ~= updated.unit and "reassigned" or nil
 end
 
 local function SyncAssignmentsToRoster(silent)
 	EnsureDB()
 
 	local changed = false
+	local details = {
+		cleared = {},
+		reassigned = {},
+	}
 
 	for _, key in ipairs(PRESCIENCE_ASSIGNMENT_KEYS) do
-		local updated, didChange = UpdateAssignmentForRoster(EasyPrescienceDB.targets[key], "Prescience " .. DISPLAY_KEYS[key], silent)
+		local label = "Prescience " .. DISPLAY_KEYS[key]
+		local updated, didChange, reason = UpdateAssignmentForRoster(EasyPrescienceDB.targets[key], label, silent)
 		EasyPrescienceDB.targets[key] = updated
 		changed = changed or didChange
+		if reason == "cleared" then
+			details.cleared[#details.cleared + 1] = label
+		elseif reason == "reassigned" then
+			details.reassigned[#details.reassigned + 1] = label
+		end
 	end
 
 	local fieldSpecs = {
@@ -731,9 +863,14 @@ local function SyncAssignmentsToRoster(silent)
 	}
 
 	for _, spec in ipairs(fieldSpecs) do
-		local updated, didChange = UpdateAssignmentForRoster(EasyPrescienceDB[spec.field], spec.label, silent)
+		local updated, didChange, reason = UpdateAssignmentForRoster(EasyPrescienceDB[spec.field], spec.label, silent)
 		EasyPrescienceDB[spec.field] = updated
 		changed = changed or didChange
+		if reason == "cleared" then
+			details.cleared[#details.cleared + 1] = spec.label
+		elseif reason == "reassigned" then
+			details.reassigned[#details.reassigned + 1] = spec.label
+		end
 	end
 
 	if changed then
@@ -741,7 +878,236 @@ local function SyncAssignmentsToRoster(silent)
 	end
 
 	RefreshOptions()
-	return changed
+	return changed, details
+end
+
+local function CollectGroupUnits()
+	local units = {}
+
+	if UnitExists("player") then
+		units[#units + 1] = "player"
+	end
+
+	if IsInRaid() then
+		for index = 1, 40 do
+			local unit = "raid" .. index
+			if UnitExists(unit) then
+				units[#units + 1] = unit
+			end
+		end
+	elseif IsInGroup() then
+		for index = 1, 4 do
+			local unit = "party" .. index
+			if UnitExists(unit) then
+				units[#units + 1] = unit
+			end
+		end
+	end
+
+	return units
+end
+
+local function UnitClassToken(unit)
+	local _, classToken = UnitClass(unit)
+	return classToken
+end
+
+local function IsHealerClass(classToken)
+	return classToken == "PRIEST"
+		or classToken == "PALADIN"
+		or classToken == "DRUID"
+		or classToken == "SHAMAN"
+		or classToken == "MONK"
+		or classToken == "EVOKER"
+end
+
+local function GetRoleUnits(role, includePlayer)
+	local units = {}
+	for _, unit in ipairs(CollectGroupUnits()) do
+		if includePlayer or not UnitIsUnit(unit, "player") then
+			if UnitGroupRolesAssigned(unit) == role then
+				units[#units + 1] = unit
+			end
+		end
+	end
+	return units
+end
+
+local function FindMainTankUnit()
+	for _, unit in ipairs(CollectGroupUnits()) do
+		if GetPartyAssignment and GetPartyAssignment("MAINTANK", unit) then
+			return unit
+		end
+	end
+end
+
+local function FindFirstTankUnit()
+	local tanks = GetRoleUnits("TANK", true)
+	return tanks[1]
+end
+
+local function FindHealerUnit(preferredClass)
+	local preferred = {}
+	local fallback = {}
+
+	for _, unit in ipairs(GetRoleUnits("HEALER", false)) do
+		local classToken = UnitClassToken(unit)
+		fallback[#fallback + 1] = unit
+		if preferredClass ~= "ANY" and classToken == preferredClass then
+			preferred[#preferred + 1] = unit
+		end
+	end
+
+	if #preferred > 0 then
+		return preferred[random(#preferred)]
+	end
+
+	if preferredClass == "ANY" then
+		local healerClasses = {}
+		for _, unit in ipairs(fallback) do
+			if IsHealerClass(UnitClassToken(unit)) then
+				healerClasses[#healerClasses + 1] = unit
+			end
+		end
+		if #healerClasses > 0 then
+			return healerClasses[random(#healerClasses)]
+		end
+	end
+
+	if #fallback > 0 then
+		return fallback[random(#fallback)]
+	end
+end
+
+local function FindDamageUnitsExcludingPlayer(limit)
+	local result = {}
+	for _, unit in ipairs(GetRoleUnits("DAMAGER", false)) do
+		result[#result + 1] = unit
+		if limit and #result >= limit then
+			break
+		end
+	end
+	return result
+end
+
+local function BuildAutoAssignSummary()
+	local summary = {}
+
+	if EasyPrescienceDB.autoAssignPrescience then
+		local prescienceParts = {}
+		if EasyPrescienceDB.prescienceNoModEnabled then
+			prescienceParts[#prescienceParts + 1] = "No Mod=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.NOMOD))
+		end
+		prescienceParts[#prescienceParts + 1] = "Shift=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.SHIFT))
+		prescienceParts[#prescienceParts + 1] = "Alt=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.ALT))
+		prescienceParts[#prescienceParts + 1] = "Ctrl=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.CTRL))
+		summary[#summary + 1] = "Prescience: " .. table.concat(prescienceParts, ", ")
+	end
+
+	if EasyPrescienceDB.autoAssignBlisteringScales then
+		summary[#summary + 1] = "Blistering Scales: " .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget))
+	end
+
+	if EasyPrescienceDB.autoAssignRescue then
+		summary[#summary + 1] = "Rescue: " .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget))
+	end
+
+	if EasyPrescienceDB.autoAssignSpatialParadox then
+		summary[#summary + 1] = "Spatial Paradox: " .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget))
+	end
+
+	return table.concat(summary, " | ")
+end
+
+ApplyAutoAssignments = function(suppressMessages)
+	EnsureDB()
+
+	if not EasyPrescienceDB.useAutoAssign then
+		return false, {}
+	end
+
+	local groupSize = GetNumGroupMembers and GetNumGroupMembers() or 0
+	if groupSize <= 0 then
+		return false, {}
+	end
+
+	local changes = {}
+	local changed = false
+
+	local function SetAutoField(field, newAssignment, label, macroID)
+		newAssignment = NormalizeStoredAssignment(newAssignment)
+		local oldDisplay = GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB[field]))
+		local newDisplay = GetStatusValue(GetAssignmentDisplayValue(newAssignment))
+		local oldUnit = GetAssignmentUnit(EasyPrescienceDB[field])
+		local newUnit = GetAssignmentUnit(newAssignment)
+
+		if oldUnit ~= newUnit or oldDisplay ~= newDisplay then
+			EasyPrescienceDB[field] = newAssignment
+			ReconcileManagedMacroByID(macroID, true)
+			changes[#changes + 1] = label .. " -> " .. newDisplay
+			changed = true
+		end
+	end
+
+	local function SetAutoPrescience(key, newAssignment)
+		newAssignment = NormalizeStoredAssignment(newAssignment)
+		local oldDisplay = GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets[key]))
+		local newDisplay = GetStatusValue(GetAssignmentDisplayValue(newAssignment))
+		local oldUnit = GetAssignmentUnit(EasyPrescienceDB.targets[key])
+		local newUnit = GetAssignmentUnit(newAssignment)
+
+		if oldUnit ~= newUnit or oldDisplay ~= newDisplay then
+			EasyPrescienceDB.targets[key] = newAssignment
+			ReconcileManagedMacroByID("prescience", true)
+			changes[#changes + 1] = "Prescience " .. DISPLAY_KEYS[key] .. " -> " .. newDisplay
+			changed = true
+		end
+	end
+
+	if IsInRaid() then
+		if EasyPrescienceDB.autoAssignBlisteringScales then
+			local tankUnit = FindMainTankUnit() or FindFirstTankUnit()
+			SetAutoField("blisteringScalesTarget", BuildAssignmentData(tankUnit), "Blistering Scales", "blistering")
+		end
+
+		if EasyPrescienceDB.autoAssignSpatialParadox then
+			local healerUnit = FindHealerUnit(EasyPrescienceDB.spatialParadoxPreferredClass)
+			SetAutoField("spatialParadoxTarget", BuildAssignmentData(healerUnit), "Spatial Paradox", "spatialParadox")
+		end
+	elseif IsInGroup() then
+		if EasyPrescienceDB.autoAssignBlisteringScales then
+			SetAutoField("blisteringScalesTarget", BuildAssignmentData(FindFirstTankUnit()), "Blistering Scales", "blistering")
+		end
+
+		if EasyPrescienceDB.autoAssignRescue then
+			SetAutoField("rescueTarget", BuildAssignmentData(FindHealerUnit("ANY")), "Rescue", "rescue")
+		end
+
+		if EasyPrescienceDB.autoAssignPrescience then
+			local damageUnits = FindDamageUnitsExcludingPlayer(2)
+			local shiftUnit = damageUnits[1]
+			local altUnit = damageUnits[2]
+
+			if EasyPrescienceDB.prescienceNoModEnabled then
+				SetAutoPrescience("NOMOD", nil)
+			end
+			SetAutoPrescience("SHIFT", BuildAssignmentData(shiftUnit))
+			SetAutoPrescience("ALT", BuildAssignmentData(altUnit))
+			SetAutoPrescience("CTRL", nil)
+		end
+	end
+
+	if changed then
+		RefreshOptions()
+		if not suppressMessages then
+			Msg("Auto-assigned: " .. table.concat(changes, ", "))
+		end
+		if EasyPrescienceDB.announceSelectionsInChat and not suppressMessages then
+			Msg(BuildAutoAssignSummary())
+		end
+	end
+
+	return changed, changes
 end
 
 local function GetContextUnit(contextData)
@@ -931,6 +1297,38 @@ local function CreateModifierRow(parent, y, labelText, getValue, setValue)
 	return y - 34
 end
 
+local function CreateChoiceRow(parent, y, labelText, width, options, getValue, setValue)
+	local label = CreateLabel(parent, labelText, 16, y, 180)
+
+	local dropdown = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
+	dropdown:SetPoint("TOPLEFT", label, "TOPRIGHT", -12, 8)
+	UIDropDownMenu_SetWidth(dropdown, width or 140)
+
+	UIDropDownMenu_Initialize(dropdown, function(self, level)
+		for _, option in ipairs(options) do
+			local info = UIDropDownMenu_CreateInfo()
+			info.text = option.label
+			info.func = function()
+				setValue(option.value)
+			end
+			info.checked = getValue() == option.value
+			UIDropDownMenu_AddButton(info, level)
+		end
+	end)
+
+	optionsRefreshers[#optionsRefreshers + 1] = function()
+		for _, option in ipairs(options) do
+			if option.value == getValue() then
+				UIDropDownMenu_SetText(dropdown, option.label)
+				return
+			end
+		end
+		UIDropDownMenu_SetText(dropdown, "Select")
+	end
+
+	return y - 34
+end
+
 local function CreateCheckboxRow(parent, y, labelText, getValue, setValue, helpText)
 	local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
 	check:SetPoint("TOPLEFT", 12, y + 4)
@@ -955,7 +1353,123 @@ local function CreateCheckboxRow(parent, y, labelText, getValue, setValue, helpT
 	return y - (helpText and 44 or 30)
 end
 
-local function RegisterOptionsPanel()
+local function UpdateMinimapButtonPosition()
+	if not minimapButton then return end
+
+	local angle = EasyPrescienceDB.minimap and EasyPrescienceDB.minimap.angle or 225
+	local radians = math.rad(angle)
+	local radius = 80
+	local x = math.cos(radians) * radius
+	local y = math.sin(radians) * radius
+
+	minimapButton:ClearAllPoints()
+	minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+local function RefreshMinimapButtonVisibility()
+	if not minimapButton then return end
+
+	if EasyPrescienceDB.minimap and EasyPrescienceDB.minimap.hide then
+		minimapButton:Hide()
+	else
+		minimapButton:Show()
+		UpdateMinimapButtonPosition()
+	end
+end
+
+local function SetMinimapButtonShown(enabled, silent)
+	EnsureDB()
+	EasyPrescienceDB.minimap.hide = enabled ~= true
+	RefreshMinimapButtonVisibility()
+	RefreshOptions()
+
+	if not silent then
+		Msg("Minimap button " .. (enabled and "shown." or "hidden."))
+	end
+end
+
+OpenSettingsPanel = function()
+	if not optionsPanel then
+		RegisterOptionsPanel()
+	end
+
+	if Settings and Settings.OpenToCategory and optionsCategoryID then
+		Settings.OpenToCategory(optionsCategoryID)
+	else
+		InterfaceOptionsFrame_OpenToCategory(optionsPanel)
+		InterfaceOptionsFrame_OpenToCategory(optionsPanel)
+	end
+end
+
+local function CreateMinimapButton()
+	if minimapButton then return end
+
+	local button = CreateFrame("Button", ADDON .. "MinimapButton", Minimap)
+	button:SetSize(31, 31)
+	button:SetFrameStrata("MEDIUM")
+	button:SetMovable(true)
+	button:SetClampedToScreen(true)
+	button:RegisterForClicks("LeftButtonUp")
+	button:RegisterForDrag("LeftButton")
+
+	local icon = button:CreateTexture(nil, "ARTWORK")
+	icon:SetTexture("Interface\\AddOns\\EasyPrescience\\icon.png")
+	icon:SetAllPoints(button)
+	button.icon = icon
+
+	local border = button:CreateTexture(nil, "OVERLAY")
+	border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+	border:SetSize(53, 53)
+	border:SetPoint("TOPLEFT")
+
+	local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+	highlight:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+	highlight:SetBlendMode("ADD")
+	highlight:SetSize(34, 34)
+	highlight:SetPoint("CENTER", 0, 1)
+
+	button:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+		GameTooltip:SetText(ADDON)
+		GameTooltip:AddLine("Left Click to print current assignments in chat.", 1, 1, 1)
+		GameTooltip:AddLine("Shift-Left Click to open settings.", 1, 1, 1)
+		GameTooltip:Show()
+	end)
+
+	button:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	button:SetScript("OnClick", function(_, buttonName)
+		if buttonName == "LeftButton" and IsShiftKeyDown() then
+			OpenSettingsPanel()
+		else
+			HandleSlashStatus()
+		end
+	end)
+
+	button:SetScript("OnDragStart", function(self)
+		self:SetScript("OnUpdate", function()
+			local cursorX, cursorY = GetCursorPosition()
+			local scale = Minimap:GetEffectiveScale()
+			local centerX, centerY = Minimap:GetCenter()
+			local deltaX = cursorX / scale - centerX
+			local deltaY = cursorY / scale - centerY
+			local angle = math.deg(math.atan2(deltaY, deltaX))
+			EasyPrescienceDB.minimap.angle = angle
+			UpdateMinimapButtonPosition()
+		end)
+	end)
+
+	button:SetScript("OnDragStop", function(self)
+		self:SetScript("OnUpdate", nil)
+	end)
+
+	minimapButton = button
+	RefreshMinimapButtonVisibility()
+end
+
+RegisterOptionsPanel = function()
 	if optionsPanel then return end
 
 	optionsPanel = CreateFrame("Frame", ADDON .. "OptionsPanel", UIParent)
@@ -980,11 +1494,19 @@ local function RegisterOptionsPanel()
 	subtitle:SetPoint("TOPLEFT", 16, y)
 	subtitle:SetWidth(640)
 	subtitle:SetJustifyH("LEFT")
-	subtitle:SetText("Configure macro names, support spell modifiers, and review all managed macros from the Blizzard AddOns settings panel. Assignments are now captured from the unit context menu and stored as group unit slots.")
-	y = y - 40
+	subtitle:SetText("Configure macro names, assignment behavior, and managed macros from the Blizzard AddOns settings panel. Targets can be assigned from the unit context menu and are stored as group unit slots.")
+	y = y - 44
 
 	CreateLabel(content, "Macro Names", 16, y)
 	y = y - 26
+
+	y = CreateCheckboxRow(content, y, "Show minimap button", function()
+		return not (EasyPrescienceDB.minimap and EasyPrescienceDB.minimap.hide)
+	end, function(value)
+		SetMinimapButtonShown(value)
+	end, "Show or hide the minimap button used to open EasyPrescience settings.")
+
+	y = y - 8
 
 	y = CreateMacroRow(content, y, "Prescience", function()
 		return EasyPrescienceDB.macroName
@@ -1027,7 +1549,54 @@ local function RegisterOptionsPanel()
 	end, "When enabled, Prescience with no modifier casts on the player assigned with 'Set on No Mod'. When disabled, no modifier keeps the normal spell behavior.")
 
 	y = y - 14
-	CreateLabel(content, "Support Spell Modifiers", 16, y)
+	CreateLabel(content, "Auto Assign", 16, y)
+	y = y - 26
+
+	y = CreateCheckboxRow(content, y, "Enable auto assignment", function()
+		return EasyPrescienceDB.useAutoAssign
+	end, function(value)
+		SetAutoAssignEnabled(value)
+	end, "Automatically assign supported targets when you join or update a party or raid. Disabled by default.")
+
+	y = CreateCheckboxRow(content, y, "Show auto-assigned targets in chat", function()
+		return EasyPrescienceDB.announceSelectionsInChat
+	end, function(value)
+		SetAnnounceSelectionsInChat(value)
+	end, "Print the current auto-assigned targets to chat whenever automatic assignments change.")
+
+	y = CreateCheckboxRow(content, y, "Auto-assign Prescience", function()
+		return EasyPrescienceDB.autoAssignPrescience
+	end, function(value)
+		SetAutoAssignUtilityEnabled("autoAssignPrescience", value)
+	end, "In 5-player groups, assign Prescience to the two other damage dealers instead of yourself.")
+
+	y = CreateCheckboxRow(content, y, "Auto-assign Blistering Scales", function()
+		return EasyPrescienceDB.autoAssignBlisteringScales
+	end, function(value)
+		SetAutoAssignUtilityEnabled("autoAssignBlisteringScales", value)
+	end, "In parties, prefer the tank. In raids, prefer the main tank or the first tank if no main tank is assigned.")
+
+	y = CreateCheckboxRow(content, y, "Auto-assign Rescue", function()
+		return EasyPrescienceDB.autoAssignRescue
+	end, function(value)
+		SetAutoAssignUtilityEnabled("autoAssignRescue", value)
+	end, "In 5-player groups, assign Rescue to the healer automatically.")
+
+	y = CreateCheckboxRow(content, y, "Auto-assign Spatial Paradox", function()
+		return EasyPrescienceDB.autoAssignSpatialParadox
+	end, function(value)
+		SetAutoAssignUtilityEnabled("autoAssignSpatialParadox", value)
+	end, "In raids, assign Spatial Paradox to a healer and prefer the selected class when available.")
+
+	y = y - 10
+	y = CreateChoiceRow(content, y, "Preferred Spatial Paradox class", 160, GetSpatialParadoxPreferredClassOptions(), function()
+		return EasyPrescienceDB.spatialParadoxPreferredClass
+	end, function(value)
+		SetSpatialParadoxPreferredClass(value)
+	end)
+
+	y = y - 14
+	CreateLabel(content, "Spell Modifiers", 16, y)
 	y = y - 26
 
 	y = CreateModifierRow(content, y, "Rescue", function()
@@ -1048,37 +1617,16 @@ local function RegisterOptionsPanel()
 		SetSpellModifier("verdantEmbraceModifier", value, "verdantEmbrace", "Verdant Embrace")
 	end)
 
-	y = y - 14
-	CreateLabel(content, "Current Assignments", 16, y)
-	y = y - 26
-
-	local assignmentsLabel = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	assignmentsLabel:SetPoint("TOPLEFT", 16, y)
-	assignmentsLabel:SetWidth(640)
-	assignmentsLabel:SetJustifyH("LEFT")
-
-	optionsRefreshers[#optionsRefreshers + 1] = function()
-		assignmentsLabel:SetText(table.concat({
-			"Prescience No Mod: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.NOMOD),
-			"Prescience Shift: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.SHIFT),
-			"Prescience Alt: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.ALT),
-			"Prescience Ctrl: " .. GetAssignmentDisplayValue(EasyPrescienceDB.targets.CTRL),
-			"Blistering Scales: " .. GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget),
-			"Rescue: " .. GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget),
-			"Spatial Paradox / Time Spiral: " .. GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget),
-			"Verdant Embrace: " .. GetAssignmentDisplayValue(EasyPrescienceDB.verdantEmbraceTarget),
-		}, "\n"))
-	end
-
-	y = y - 144
+	y = y - 8
 	CreateLabel(content, "Actions", 16, y)
 	y = y - 28
 
 	local reconcileButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
 	reconcileButton:SetSize(180, 24)
 	reconcileButton:SetPoint("TOPLEFT", 16, y)
-	reconcileButton:SetText("Review All Macros")
+	reconcileButton:SetText("Review Macros")
 	reconcileButton:SetScript("OnClick", function()
+		ClearAllAssignments(true)
 		ReconcileManagedMacros()
 	end)
 
@@ -1086,14 +1634,14 @@ local function RegisterOptionsPanel()
 	refreshLabel:SetPoint("LEFT", reconcileButton, "RIGHT", 12, 0)
 	refreshLabel:SetWidth(420)
 	refreshLabel:SetJustifyH("LEFT")
-	refreshLabel:SetText("This reviews all managed macros, recreates anything missing, and overwrites outdated or manually edited macro bodies.")
+	refreshLabel:SetText("This clears all assigned targets, then reviews every managed macro, recreates anything missing, and overwrites outdated or manually edited macro bodies.")
 	y = y - 46
 
 	local helpLabel = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 	helpLabel:SetPoint("TOPLEFT", 16, y)
 	helpLabel:SetWidth(640)
 	helpLabel:SetJustifyH("LEFT")
-	helpLabel:SetText("Use the right-click unit menu to assign targets. EasyPrescience stores group unit slots like party1 and raid3 instead of player names, then rebuilds macros automatically. Spatial Paradox automatically swaps to Time Spiral when that talent is selected and updates again when talents change.")
+	helpLabel:SetText("Use the right-click unit menu to assign targets. EasyPrescience stores group unit slots such as party1 and raid3 instead of player names, then rebuilds macros automatically. Spatial Paradox automatically switches to Time Spiral when that talent is selected and updates again when talents change.")
 	y = y - 44
 
 	local deleteButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
@@ -1108,7 +1656,7 @@ local function RegisterOptionsPanel()
 	deleteLabel:SetPoint("LEFT", deleteButton, "RIGHT", 12, 0)
 	deleteLabel:SetWidth(420)
 	deleteLabel:SetJustifyH("LEFT")
-	deleteLabel:SetText("Deletes every macro managed by EasyPrescience so uninstalling the addon is easier.")
+	deleteLabel:SetText("Delete every macro managed by EasyPrescience to make uninstalling the addon easier.")
 	y = y - 38
 
 	y = y - 12
@@ -1120,43 +1668,48 @@ local function RegisterOptionsPanel()
 	if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
 		local category = Settings.RegisterCanvasLayoutCategory(optionsPanel, ADDON)
 		Settings.RegisterAddOnCategory(category)
+		if type(category) == "table" then
+			if type(category.GetID) == "function" then
+				optionsCategoryID = category:GetID()
+			elseif type(category.ID) == "number" then
+				optionsCategoryID = category.ID
+			end
+		elseif type(category) == "number" then
+			optionsCategoryID = category
+		end
 	else
 		InterfaceOptions_AddCategory(optionsPanel)
 	end
 end
 
-local function HandleSlashStatus()
+HandleSlashStatus = function()
 	EnsureDB()
 	Msg("Options: Blizzard Settings -> AddOns -> " .. ADDON)
-	Msg(
-		"Macros: Prescience=" .. GetStatusValue(EasyPrescienceDB.macroName)
-			.. ", Blistering=" .. GetStatusValue(EasyPrescienceDB.blisteringScalesMacroName)
-			.. ", Rescue=" .. GetStatusValue(EasyPrescienceDB.rescueMacroName)
-	)
-	Msg(
-		"Macros: Spatial=" .. GetStatusValue(EasyPrescienceDB.spatialParadoxMacroName)
-			.. ", Verdant=" .. GetStatusValue(EasyPrescienceDB.verdantEmbraceMacroName)
-	)
-	Msg(
-		"Prescience: No Mod=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.NOMOD))
-			.. " (" .. (EasyPrescienceDB.prescienceNoModEnabled and "enabled" or "disabled") .. ")"
-	)
-	Msg(
-		"Prescience: Shift=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.SHIFT))
-			.. ", Alt=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.ALT))
-			.. ", Ctrl=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.CTRL))
-	)
-	Msg(
-		"Utility: Blistering=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget))
-			.. ", Rescue=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget))
-			.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.rescueModifier] .. "]"
-	)
-	Msg(
-		"Utility: Spatial=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget))
-			.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.spatialParadoxModifier] .. "]"
-			.. ", Verdant=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.verdantEmbraceTarget))
-			.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.verdantEmbraceModifier] .. "]"
-	)
+	Msg("Auto assign: " .. (EasyPrescienceDB.useAutoAssign and "On" or "Off")
+		.. " | Chat selections: " .. (EasyPrescienceDB.announceSelectionsInChat and "On" or "Off")
+		.. " | Spatial pref: " .. GetClassDisplayName(EasyPrescienceDB.spatialParadoxPreferredClass))
+	Msg("Macros: Prescience=" .. GetStatusValue(EasyPrescienceDB.macroName)
+		.. ", Blistering=" .. GetStatusValue(EasyPrescienceDB.blisteringScalesMacroName)
+		.. ", Rescue=" .. GetStatusValue(EasyPrescienceDB.rescueMacroName)
+		.. ", Spatial=" .. GetStatusValue(EasyPrescienceDB.spatialParadoxMacroName)
+		.. ", Verdant=" .. GetStatusValue(EasyPrescienceDB.verdantEmbraceMacroName))
+	local prescienceSummary = {}
+	if EasyPrescienceDB.prescienceNoModEnabled then
+		prescienceSummary[#prescienceSummary + 1] = "No Mod=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.NOMOD))
+	else
+		prescienceSummary[#prescienceSummary + 1] = "No Mod=Disabled"
+	end
+	prescienceSummary[#prescienceSummary + 1] = "Shift=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.SHIFT))
+	prescienceSummary[#prescienceSummary + 1] = "Alt=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.ALT))
+	prescienceSummary[#prescienceSummary + 1] = "Ctrl=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.targets.CTRL))
+	Msg("Prescience: " .. table.concat(prescienceSummary, ", "))
+	Msg("Utilities: Blistering=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.blisteringScalesTarget))
+		.. ", Rescue=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.rescueTarget))
+		.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.rescueModifier] .. "]"
+		.. ", Spatial=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget))
+		.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.spatialParadoxModifier] .. "]"
+		.. ", Verdant=" .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.verdantEmbraceTarget))
+		.. " [" .. DISPLAY_KEYS[EasyPrescienceDB.verdantEmbraceModifier] .. "]")
 end
 
 local frame = CreateFrame("Frame")
@@ -1170,14 +1723,29 @@ frame:SetScript("OnEvent", function(_, event)
 	if event == "PLAYER_LOGIN" then
 		HookMenus()
 		RegisterOptionsPanel()
+		CreateMinimapButton()
 		SyncAssignmentsToRoster(true)
+		ApplyAutoAssignments()
 		ReconcileManagedMacros(true)
 		return
 	end
 
 	if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
 		HookMenus()
-		SyncAssignmentsToRoster(event ~= "GROUP_ROSTER_UPDATE")
+		local _, rosterDetails = SyncAssignmentsToRoster(event ~= "GROUP_ROSTER_UPDATE")
+		local autoChanged, autoChanges = ApplyAutoAssignments(event == "GROUP_ROSTER_UPDATE")
+		if event == "GROUP_ROSTER_UPDATE" and rosterDetails then
+			if #rosterDetails.cleared > 0 and autoChanged then
+				Msg("Reassigned after group changes: " .. table.concat(autoChanges, ", "))
+				if EasyPrescienceDB.announceSelectionsInChat then
+					Msg(BuildAutoAssignSummary())
+				end
+			elseif #rosterDetails.cleared > 0 then
+				Msg("Targets left your group, so these assignments were cleared: " .. table.concat(rosterDetails.cleared, ", "))
+			elseif #rosterDetails.reassigned > 0 then
+				Msg("Updated assignments after roster changes: " .. table.concat(rosterDetails.reassigned, ", "))
+			end
+		end
 		return
 	end
 
@@ -1197,6 +1765,30 @@ SlashCmdList.EASYPRESCIENCE = function(msg)
 
 	if command == "" then
 		HandleSlashStatus()
+		return
+	end
+
+	if command == "autoassign" then
+		local value = rest:lower()
+		if value == "on" or value == "1" or value == "true" then
+			SetAutoAssignEnabled(true)
+		elseif value == "off" or value == "0" or value == "false" then
+			SetAutoAssignEnabled(false)
+		else
+			Msg("Use: /ep autoassign on|off")
+		end
+		return
+	end
+
+	if command == "chatselections" then
+		local value = rest:lower()
+		if value == "on" or value == "1" or value == "true" then
+			SetAnnounceSelectionsInChat(true)
+		elseif value == "off" or value == "0" or value == "false" then
+			SetAnnounceSelectionsInChat(false)
+		else
+			Msg("Use: /ep chatselections on|off")
+		end
 		return
 	end
 
