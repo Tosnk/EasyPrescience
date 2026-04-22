@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.1
+
+- Updated the addon metadata for WoW 12.0.5 compatibility
+
 ## 2.3
 
 - Added Source of Magic support with its own target, macro, menu entry, options, and auto-assignment
