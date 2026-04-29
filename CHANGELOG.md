@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.3.3
+
+- Re-released to sync the manual CurseForge changelog with the latest published addon state
+
+## 2.3.2
+
+- Added locale-safe macro generation for supported WoW clients instead of relying on English spell names
+- Added explicit locale support handling for all WoW locales except Russian and Chinese
+- Added Verdant Embrace auto-assignment in party and raid groups
+
 ## 2.3.1
 
 - Updated the addon metadata for WoW 12.0.5 compatibility
