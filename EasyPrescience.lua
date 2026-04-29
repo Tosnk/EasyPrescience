@@ -8,10 +8,30 @@ local DEFAULT_SOURCE_OF_MAGIC_MACRO_NAME = "SourceOfMagic"
 local DEFAULT_RESCUE_MACRO_NAME = "RescueTarget"
 local DEFAULT_SPATIAL_PARADOX_MACRO_NAME = "SpatialParadox"
 local DEFAULT_VERDANT_EMBRACE_MACRO_NAME = "VerdantEmbrace"
-local SOURCE_OF_MAGIC_SPELL_NAME = "Source of Magic"
-local SPATIAL_PARADOX_SPELL_NAME = "Spatial Paradox"
-local TIME_SPIRAL_SPELL_NAME = "Time Spiral"
-local VERDANT_EMBRACE_SPELL_NAME = "Verdant Embrace"
+local LOCALE = GetLocale and GetLocale() or "enUS"
+local UNSUPPORTED_LOCALES = {
+	ruRU = true,
+	zhCN = true,
+	zhTW = true,
+}
+local SPELL_IDS = {
+	PRESCIENCE = 409311,
+	BLISTERING_SCALES = 360827,
+	SOURCE_OF_MAGIC = 369459,
+	RESCUE = 370665,
+	SPATIAL_PARADOX = 406732,
+	TIME_SPIRAL = 374968,
+	VERDANT_EMBRACE = 360995,
+}
+local SPELL_NAME_FALLBACKS = {
+	[SPELL_IDS.PRESCIENCE] = "Prescience",
+	[SPELL_IDS.BLISTERING_SCALES] = "Blistering Scales",
+	[SPELL_IDS.SOURCE_OF_MAGIC] = "Source of Magic",
+	[SPELL_IDS.RESCUE] = "Rescue",
+	[SPELL_IDS.SPATIAL_PARADOX] = "Spatial Paradox",
+	[SPELL_IDS.TIME_SPIRAL] = "Time Spiral",
+	[SPELL_IDS.VERDANT_EMBRACE] = "Verdant Embrace",
+}
 local MODIFIER_KEYS = { "SHIFT", "ALT", "CTRL" }
 local PRESCIENCE_ASSIGNMENT_KEYS = { "NOMOD", "SHIFT", "ALT", "CTRL" }
 local DISPLAY_KEYS = {
@@ -56,9 +76,52 @@ local managedMacros
 local minimapButton
 local RefreshOptions
 local ApplyAutoAssignments
+local AutoReassignAllTargets
 local OpenSettingsPanel
 local RegisterOptionsPanel
 local HandleSlashStatus
+local localizedSpellNames = {}
+local localeSupportWarningShown = false
+
+local function IsSupportedLocale()
+	return not UNSUPPORTED_LOCALES[LOCALE]
+end
+
+local function GetSpellNameByID(spellID)
+	if type(spellID) ~= "number" then return nil end
+	if localizedSpellNames[spellID] then
+		return localizedSpellNames[spellID]
+	end
+
+	local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+	local name = type(info) == "table" and info.name or info
+	if not name and GetSpellInfo then
+		name = GetSpellInfo(spellID)
+	end
+	if type(name) == "string" and name ~= "" then
+		localizedSpellNames[spellID] = name
+		return name
+	end
+
+	return SPELL_NAME_FALLBACKS[spellID]
+end
+
+local function GetRequiredSpellName(spellID)
+	return GetSpellNameByID(spellID) or SPELL_NAME_FALLBACKS[spellID]
+end
+
+local function CanManageLocalizedMacros(showMessage)
+	if IsSupportedLocale() then
+		return true
+	end
+
+	if showMessage and not localeSupportWarningShown then
+		Err("This addon currently supports all WoW locales except Russian and Chinese. Managed macros are disabled on " .. LOCALE .. ".")
+		localeSupportWarningShown = true
+	end
+
+	return false
+end
 
 local function GetNonPrescienceModifierOptions()
 	return {
@@ -377,6 +440,7 @@ local function EnsureDB()
 	EasyPrescienceDB.autoAssignSourceOfMagic = EasyPrescienceDB.autoAssignSourceOfMagic ~= false
 	EasyPrescienceDB.autoAssignRescue = EasyPrescienceDB.autoAssignRescue ~= false
 	EasyPrescienceDB.autoAssignSpatialParadox = EasyPrescienceDB.autoAssignSpatialParadox ~= false
+	EasyPrescienceDB.autoAssignVerdantEmbrace = EasyPrescienceDB.autoAssignVerdantEmbrace ~= false
 	EasyPrescienceDB.announceSelectionsInChat = EasyPrescienceDB.announceSelectionsInChat == true
 	local preferredClass = type(EasyPrescienceDB.spatialParadoxPreferredClass) == "string" and EasyPrescienceDB.spatialParadoxPreferredClass:upper() or "ANY"
 	EasyPrescienceDB.spatialParadoxPreferredClass = preferredClass
@@ -400,6 +464,7 @@ local function MacroIndexByName(name)
 end
 
 local function BuildPrescienceMacroBody()
+	local spellName = GetRequiredSpellName(SPELL_IDS.PRESCIENCE)
 	local conditions = {}
 
 	if EasyPrescienceDB.prescienceNoModEnabled then
@@ -420,8 +485,8 @@ local function BuildPrescienceMacroBody()
 	conditions[#conditions + 1] = "[]"
 
 	return table.concat({
-		"#showtooltip Prescience",
-		"/cast " .. table.concat(conditions, "") .. " Prescience",
+		"#showtooltip " .. spellName,
+		"/cast " .. table.concat(conditions, "") .. " " .. spellName,
 	}, "\n")
 end
 
@@ -457,48 +522,33 @@ local function BuildSingleModifierTargetMacroBody(spellName, modifierKey, target
 	}, "\n")
 end
 
-local function GetSpellIDByName(spellName)
-	local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellName)
-	if type(info) == "table" and type(info.spellID) == "number" then
-		return info.spellID
-	end
-
-	local legacySpellID = GetSpellInfo and select(7, GetSpellInfo(spellName))
-	if type(legacySpellID) == "number" then
-		return legacySpellID
-	end
-
-	return nil
-end
-
-local function IsSpellAvailable(spellName)
-	local spellID = GetSpellIDByName(spellName)
-	if not spellID then return false end
+local function IsSpellAvailable(spellID)
+	if type(spellID) ~= "number" then return false end
 	if IsPlayerSpell and IsPlayerSpell(spellID) then return true end
 	if IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(spellID) then return true end
 	return false
 end
 
 local function GetSpatialParadoxMacroSpellName()
-	if IsSpellAvailable(SPATIAL_PARADOX_SPELL_NAME) then
-		return SPATIAL_PARADOX_SPELL_NAME
+	if IsSpellAvailable(SPELL_IDS.SPATIAL_PARADOX) then
+		return GetRequiredSpellName(SPELL_IDS.SPATIAL_PARADOX)
 	end
-	if IsSpellAvailable(TIME_SPIRAL_SPELL_NAME) then
-		return TIME_SPIRAL_SPELL_NAME
+	if IsSpellAvailable(SPELL_IDS.TIME_SPIRAL) then
+		return GetRequiredSpellName(SPELL_IDS.TIME_SPIRAL)
 	end
-	return SPATIAL_PARADOX_SPELL_NAME
+	return GetRequiredSpellName(SPELL_IDS.SPATIAL_PARADOX)
 end
 
 local function BuildBlisteringScalesMacroBody()
-	return BuildDirectTargetMacroBody("Blistering Scales", EasyPrescienceDB.blisteringScalesTarget)
+	return BuildDirectTargetMacroBody(GetRequiredSpellName(SPELL_IDS.BLISTERING_SCALES), EasyPrescienceDB.blisteringScalesTarget)
 end
 
 local function BuildSourceOfMagicMacroBody()
-	return BuildDirectTargetMacroBody(SOURCE_OF_MAGIC_SPELL_NAME, EasyPrescienceDB.sourceOfMagicTarget)
+	return BuildDirectTargetMacroBody(GetRequiredSpellName(SPELL_IDS.SOURCE_OF_MAGIC), EasyPrescienceDB.sourceOfMagicTarget)
 end
 
 local function BuildRescueMacroBody()
-	return BuildSingleModifierTargetMacroBody("Rescue", EasyPrescienceDB.rescueModifier, EasyPrescienceDB.rescueTarget)
+	return BuildSingleModifierTargetMacroBody(GetRequiredSpellName(SPELL_IDS.RESCUE), EasyPrescienceDB.rescueModifier, EasyPrescienceDB.rescueTarget)
 end
 
 local function BuildSpatialParadoxMacroBody()
@@ -518,8 +568,8 @@ local function BuildVerdantEmbraceMacroBody()
 	conditions[#conditions + 1] = "[nomod,@player]"
 
 	return table.concat({
-		"#showtooltip " .. VERDANT_EMBRACE_SPELL_NAME,
-		"/cast " .. table.concat(conditions, "") .. " " .. VERDANT_EMBRACE_SPELL_NAME,
+		"#showtooltip " .. GetRequiredSpellName(SPELL_IDS.VERDANT_EMBRACE),
+		"/cast " .. table.concat(conditions, "") .. " " .. GetRequiredSpellName(SPELL_IDS.VERDANT_EMBRACE),
 	}, "\n")
 end
 
@@ -629,6 +679,9 @@ end
 
 local function ReconcileManagedMacros(silent)
 	EnsureDB()
+	if not CanManageLocalizedMacros(not silent) then
+		return
+	end
 
 	if InCombatLockdown() then
 		Err("Can't review macros in combat.")
@@ -643,6 +696,9 @@ end
 local function ReconcileManagedMacroByID(id, silent)
 	local spec = GetManagedMacroSpecByID(id)
 	if not spec then return end
+	if not CanManageLocalizedMacros(not silent) then
+		return
+	end
 	ReconcileMacro(spec, silent)
 end
 
@@ -782,6 +838,7 @@ local function SetAutoAssignUtilityEnabled(field, enabled, silent)
 		autoAssignSourceOfMagic = "Source of Magic",
 		autoAssignRescue = "Rescue",
 		autoAssignSpatialParadox = "Spatial Paradox",
+		autoAssignVerdantEmbrace = "Verdant Embrace",
 	}
 	EnsureDB()
 	EasyPrescienceDB[field] = enabled == true
@@ -1057,6 +1114,10 @@ local function BuildAutoAssignSummary()
 		summary[#summary + 1] = "Spatial Paradox: " .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.spatialParadoxTarget))
 	end
 
+	if EasyPrescienceDB.autoAssignVerdantEmbrace then
+		summary[#summary + 1] = "Verdant Embrace: " .. GetStatusValue(GetAssignmentDisplayValue(EasyPrescienceDB.verdantEmbraceTarget))
+	end
+
 	return table.concat(summary, " | ")
 end
 
@@ -1120,6 +1181,10 @@ ApplyAutoAssignments = function(suppressMessages)
 			local healerUnit = FindHealerUnit(EasyPrescienceDB.spatialParadoxPreferredClass)
 			SetAutoField("spatialParadoxTarget", BuildAssignmentData(healerUnit), "Spatial Paradox", "spatialParadox")
 		end
+
+		if EasyPrescienceDB.autoAssignVerdantEmbrace then
+			SetAutoField("verdantEmbraceTarget", BuildAssignmentData(FindHealerUnit("ANY")), "Verdant Embrace", "verdantEmbrace")
+		end
 	elseif IsInGroup() then
 		if EasyPrescienceDB.autoAssignBlisteringScales then
 			SetAutoField("blisteringScalesTarget", BuildAssignmentData(FindFirstTankUnit()), "Blistering Scales", "blistering")
@@ -1132,6 +1197,10 @@ ApplyAutoAssignments = function(suppressMessages)
 
 		if EasyPrescienceDB.autoAssignRescue then
 			SetAutoField("rescueTarget", BuildAssignmentData(FindHealerUnit("ANY")), "Rescue", "rescue")
+		end
+
+		if EasyPrescienceDB.autoAssignVerdantEmbrace then
+			SetAutoField("verdantEmbraceTarget", BuildAssignmentData(FindHealerUnit("ANY")), "Verdant Embrace", "verdantEmbrace")
 		end
 
 		if EasyPrescienceDB.autoAssignPrescience then
@@ -1155,6 +1224,48 @@ ApplyAutoAssignments = function(suppressMessages)
 		end
 		if EasyPrescienceDB.announceSelectionsInChat and not suppressMessages then
 			Msg(BuildAutoAssignSummary())
+		end
+	end
+
+	return changed, changes
+end
+
+AutoReassignAllTargets = function(suppressMessages)
+	EnsureDB()
+
+	if InCombatLockdown() then
+		if not suppressMessages then
+			Err("Can't auto-reassign targets in combat.")
+		end
+		return false, {}
+	end
+
+	local _, rosterChanges = SyncAssignmentsToRoster(true)
+	local autoChanged, autoChanges = ApplyAutoAssignments(true)
+	local macrosChanged = ReconcileManagedMacros(true)
+
+	RefreshOptions()
+
+	local changes = {}
+	for _, detail in ipairs(rosterChanges or {}) do
+		changes[#changes + 1] = detail
+	end
+	for _, detail in ipairs(autoChanges or {}) do
+		changes[#changes + 1] = detail
+	end
+	if macrosChanged then
+		changes[#changes + 1] = "Managed macros updated"
+	end
+
+	local changed = #changes > 0
+	if not suppressMessages then
+		if changed then
+			Msg("Auto-reassigned targets: " .. table.concat(changes, ", "))
+			if EasyPrescienceDB.announceSelectionsInChat then
+				Msg(BuildAutoAssignSummary())
+			end
+		else
+			Msg("No auto-reassignment changes were needed.")
 		end
 	end
 
@@ -1467,7 +1578,7 @@ local function CreateMinimapButton()
 	button:SetFrameStrata("MEDIUM")
 	button:SetMovable(true)
 	button:SetClampedToScreen(true)
-	button:RegisterForClicks("LeftButtonUp")
+	button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	button:RegisterForDrag("LeftButton")
 
 	local icon = button:CreateTexture(nil, "ARTWORK")
@@ -1491,6 +1602,7 @@ local function CreateMinimapButton()
 		GameTooltip:SetText(ADDON)
 		GameTooltip:AddLine("Left Click to print current assignments in chat.", 1, 1, 1)
 		GameTooltip:AddLine("Shift-Left Click to open settings.", 1, 1, 1)
+		GameTooltip:AddLine("Shift-Right Click to auto-reassign targets and update macros.", 1, 1, 1)
 		GameTooltip:Show()
 	end)
 
@@ -1501,6 +1613,8 @@ local function CreateMinimapButton()
 	button:SetScript("OnClick", function(_, buttonName)
 		if buttonName == "LeftButton" and IsShiftKeyDown() then
 			OpenSettingsPanel()
+		elseif buttonName == "RightButton" and IsShiftKeyDown() then
+			AutoReassignAllTargets()
 		else
 			HandleSlashStatus()
 		end
@@ -1658,6 +1772,12 @@ RegisterOptionsPanel = function()
 		SetAutoAssignUtilityEnabled("autoAssignSpatialParadox", value)
 	end, "In raids, assign Spatial Paradox to a healer and prefer the selected class when available.")
 
+	y = CreateCheckboxRow(content, y, "Auto-assign Verdant Embrace", function()
+		return EasyPrescienceDB.autoAssignVerdantEmbrace
+	end, function(value)
+		SetAutoAssignUtilityEnabled("autoAssignVerdantEmbrace", value)
+	end, "In parties and raids, assign Verdant Embrace to a healer automatically.")
+
 	y = y - 10
 	y = CreateChoiceRow(content, y, "Preferred Source of Magic class", 160, GetHealerPreferredClassOptions(), function()
 		return EasyPrescienceDB.sourceOfMagicPreferredClass
@@ -1714,11 +1834,26 @@ RegisterOptionsPanel = function()
 	refreshLabel:SetText("This clears all assigned targets, then reviews every managed macro, recreates anything missing, and overwrites outdated or manually edited macro bodies.")
 	y = y - 46
 
+	local reassignButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+	reassignButton:SetSize(180, 24)
+	reassignButton:SetPoint("TOPLEFT", 16, y)
+	reassignButton:SetText("Auto-Reassign Targets")
+	reassignButton:SetScript("OnClick", function()
+		AutoReassignAllTargets()
+	end)
+
+	local reassignLabel = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	reassignLabel:SetPoint("LEFT", reassignButton, "RIGHT", 12, 0)
+	reassignLabel:SetWidth(420)
+	reassignLabel:SetJustifyH("LEFT")
+	reassignLabel:SetText("Runs the current auto-assignment rules again for supported targets, cleans up missing group targets, and updates every managed macro.")
+	y = y - 46
+
 	local helpLabel = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 	helpLabel:SetPoint("TOPLEFT", 16, y)
 	helpLabel:SetWidth(640)
 	helpLabel:SetJustifyH("LEFT")
-	helpLabel:SetText("Use the right-click unit menu to assign targets. EasyPrescience stores group unit slots such as party1 and raid3 instead of player names, then rebuilds macros automatically. Spatial Paradox automatically switches to Time Spiral when that talent is selected and updates again when talents change.")
+	helpLabel:SetText("Use the right-click unit menu to assign targets. EasyPrescience stores group unit slots such as party1 and raid3 instead of player names, then rebuilds macros automatically. Spatial Paradox automatically switches to Time Spiral when that talent is selected and updates again when talents change. Managed macros support all WoW locales except Russian and Chinese.")
 	y = y - 44
 
 	local deleteButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
@@ -1762,6 +1897,7 @@ end
 HandleSlashStatus = function()
 	EnsureDB()
 	Msg("Options: Blizzard Settings -> AddOns -> " .. ADDON)
+	Msg("Locale: " .. LOCALE .. " (" .. (IsSupportedLocale() and "supported" or "unsupported") .. ")")
 	Msg("Auto assign: " .. (EasyPrescienceDB.useAutoAssign and "On" or "Off")
 		.. " | Chat selections: " .. (EasyPrescienceDB.announceSelectionsInChat and "On" or "Off")
 		.. " | Source pref: " .. GetClassDisplayName(EasyPrescienceDB.sourceOfMagicPreferredClass)
@@ -1804,6 +1940,7 @@ frame:SetScript("OnEvent", function(_, event)
 		HookMenus()
 		RegisterOptionsPanel()
 		CreateMinimapButton()
+		CanManageLocalizedMacros(true)
 		SyncAssignmentsToRoster(true)
 		ApplyAutoAssignments()
 		ReconcileManagedMacros(true)
