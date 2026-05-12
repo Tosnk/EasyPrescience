@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.4
+
+- Prevented auto-assignment from overwriting manual assignments on routine group updates
+- Limited automatic reassignment to cases where a tracked assigned player actually moved to a new unit slot or left the group
+- Fixed settings dropdowns to refresh immediately after changing preferred healer selections and other auto-assignment-driven values
+- Added `Evoker` addon menu categorization in the TOC metadata
+- Added Chinese locale support and left only ruzzian unsupported
+
 ## 2.3.3
 
 - Re-released to sync the manual CurseForge changelog with the latest published addon state
@@ -7,7 +15,7 @@
 ## 2.3.2
 
 - Added locale-safe macro generation for supported WoW clients instead of relying on English spell names
-- Added explicit locale support handling for all WoW locales except Russian and Chinese
+- Added explicit locale support handling for all WoW locales except ruzzian
 - Added Verdant Embrace auto-assignment in party and raid groups
 
 ## 2.3.1

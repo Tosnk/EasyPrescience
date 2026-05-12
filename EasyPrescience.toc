@@ -2,8 +2,9 @@
 ## Title: EasyPrescience
 ## Notes: Manage Prescience and support macros from unit menus with automatic review and Blizzard Settings options
 ## Author: Dydko-Draenor
-## Version: 2.3.3
+## Version: 2.3.4
 ## IconTexture: Interface\AddOns\EasyPrescience\icon.png
+## Category: Evoker
 ## SavedVariables: EasyPrescienceDB
 
 EasyPrescience.lua

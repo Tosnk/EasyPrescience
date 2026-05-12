@@ -11,8 +11,6 @@ local DEFAULT_VERDANT_EMBRACE_MACRO_NAME = "VerdantEmbrace"
 local LOCALE = GetLocale and GetLocale() or "enUS"
 local UNSUPPORTED_LOCALES = {
 	ruRU = true,
-	zhCN = true,
-	zhTW = true,
 }
 local SPELL_IDS = {
 	PRESCIENCE = 409311,
@@ -116,7 +114,7 @@ local function CanManageLocalizedMacros(showMessage)
 	end
 
 	if showMessage and not localeSupportWarningShown then
-		Err("This addon currently supports all WoW locales except Russian and Chinese. Managed macros are disabled on " .. LOCALE .. ".")
+		Err("This addon currently supports all WoW locales except ruzzian. Managed macros are disabled on " .. LOCALE .. ".")
 		localeSupportWarningShown = true
 	end
 
@@ -869,9 +867,8 @@ local function SetSpatialParadoxPreferredClass(value, silent)
 	EasyPrescienceDB.spatialParadoxPreferredClass = value
 	if EasyPrescienceDB.useAutoAssign and EasyPrescienceDB.autoAssignSpatialParadox then
 		ApplyAutoAssignments()
-	else
-		RefreshOptions()
 	end
+	RefreshOptions()
 
 	if not silent then
 		Msg("Spatial Paradox preferred class =", GetClassDisplayName(value))
@@ -884,9 +881,8 @@ local function SetSourceOfMagicPreferredClass(value, silent)
 	EasyPrescienceDB.sourceOfMagicPreferredClass = value
 	if EasyPrescienceDB.useAutoAssign and EasyPrescienceDB.autoAssignSourceOfMagic then
 		ApplyAutoAssignments()
-	else
-		RefreshOptions()
 	end
+	RefreshOptions()
 
 	if not silent then
 		Msg("Source of Magic preferred class =", GetClassDisplayName(value))
@@ -973,6 +969,22 @@ local function SyncAssignmentsToRoster(silent)
 
 	RefreshOptions()
 	return changed, details
+end
+
+local function HasAnyStoredAssignments()
+	for _, key in ipairs(PRESCIENCE_ASSIGNMENT_KEYS) do
+		if NormalizeStoredAssignment(EasyPrescienceDB.targets[key]) then
+			return true
+		end
+	end
+
+	for _, field in ipairs({ "blisteringScalesTarget", "sourceOfMagicTarget", "rescueTarget", "spatialParadoxTarget", "verdantEmbraceTarget" }) do
+		if NormalizeStoredAssignment(EasyPrescienceDB[field]) then
+			return true
+		end
+	end
+
+	return false
 end
 
 local function CollectGroupUnits()
@@ -1218,7 +1230,6 @@ ApplyAutoAssignments = function(suppressMessages)
 	end
 
 	if changed then
-		RefreshOptions()
 		if not suppressMessages then
 			Msg("Auto-assigned: " .. table.concat(changes, ", "))
 		end
@@ -1226,6 +1237,8 @@ ApplyAutoAssignments = function(suppressMessages)
 			Msg(BuildAutoAssignSummary())
 		end
 	end
+
+	RefreshOptions()
 
 	return changed, changes
 end
@@ -1853,7 +1866,7 @@ RegisterOptionsPanel = function()
 	helpLabel:SetPoint("TOPLEFT", 16, y)
 	helpLabel:SetWidth(640)
 	helpLabel:SetJustifyH("LEFT")
-	helpLabel:SetText("Use the right-click unit menu to assign targets. EasyPrescience stores group unit slots such as party1 and raid3 instead of player names, then rebuilds macros automatically. Spatial Paradox automatically switches to Time Spiral when that talent is selected and updates again when talents change. Managed macros support all WoW locales except Russian and Chinese.")
+	helpLabel:SetText("Use the right-click unit menu to assign targets. EasyPrescience stores group unit slots such as party1 and raid3 instead of player names, then rebuilds macros automatically. Spatial Paradox automatically switches to Time Spiral when that talent is selected and updates again when talents change. Managed macros support all WoW locales except ruzzian.")
 	y = y - 44
 
 	local deleteButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
@@ -1941,16 +1954,21 @@ frame:SetScript("OnEvent", function(_, event)
 		RegisterOptionsPanel()
 		CreateMinimapButton()
 		CanManageLocalizedMacros(true)
-		SyncAssignmentsToRoster(true)
-		ApplyAutoAssignments()
+		local rosterChanged = SyncAssignmentsToRoster(true)
+		if EasyPrescienceDB.useAutoAssign and (rosterChanged or not HasAnyStoredAssignments()) then
+			ApplyAutoAssignments(true)
+		end
 		ReconcileManagedMacros(true)
 		return
 	end
 
 	if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" then
 		HookMenus()
-		local _, rosterDetails = SyncAssignmentsToRoster(event ~= "GROUP_ROSTER_UPDATE")
-		local autoChanged, autoChanges = ApplyAutoAssignments(event == "GROUP_ROSTER_UPDATE")
+		local rosterChanged, rosterDetails = SyncAssignmentsToRoster(event ~= "GROUP_ROSTER_UPDATE")
+		local autoChanged, autoChanges = false, {}
+		if EasyPrescienceDB.useAutoAssign and rosterChanged then
+			autoChanged, autoChanges = ApplyAutoAssignments(event == "GROUP_ROSTER_UPDATE")
+		end
 		if event == "GROUP_ROSTER_UPDATE" and rosterDetails then
 			if #rosterDetails.cleared > 0 and autoChanged then
 				Msg("Reassigned after group changes: " .. table.concat(autoChanges, ", "))
