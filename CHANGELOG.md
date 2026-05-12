@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.5
+
+- Repackaged the 2.3.4 feature set under a fresh release tag so CurseForge receives the correct archive contents and changelog
+
 ## 2.3.4
 
 - Prevented auto-assignment from overwriting manual assignments on routine group updates

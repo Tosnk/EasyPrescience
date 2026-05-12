@@ -1,4 +1,6 @@
 package-as: EasyPrescience
+ignore:
+  - scripts
 manual-changelog:
   filename: CHANGELOG.md
   markup-type: markdown
