@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.6
+
+- Updated the addon metadata for WoW 12.1.5 compatibility (Interface 120105)
+
 ## 2.3.5
 
 - Repackaged the 2.3.4 feature set under a fresh release tag so CurseForge receives the correct archive contents and changelog
